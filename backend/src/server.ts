@@ -22,5 +22,6 @@ serve({ fetch: app.fetch, port }, (info) => {
   console.log(`  frontend (APP_URL): ${config.appUrl()}`);
   console.log(`  AI providers: ${ai.length ? ai.map((p) => `${p.label} (${p.model})`).join(" → ") : "none configured, set a key in backend/.env"}`);
   console.log("  database: PostgreSQL");
+  console.log(`  remote MCP: ${config.publicApiUrl()}/mcp  (Bearer <agent key>)`);
   console.log(`  catalog: ${catalogSource() === "channel3" ? "Channel3 live (demo catalog as fallback)" : "demo"}`);
 });

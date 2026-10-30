@@ -8,6 +8,7 @@ import { authRoutes } from "./routes/auth";
 import { approvalRoutes } from "./routes/approvals";
 import { chatRoutes } from "./routes/chat";
 import { ledgerRoutes } from "./routes/ledger";
+import { mcpRoutes } from "./mcp/http";
 import { merchantRoutes } from "./routes/merchant";
 import { metaRoutes } from "./routes/meta";
 import { policyRoutes } from "./routes/policy";
@@ -35,6 +36,7 @@ app.route("/api/wallet", walletRoutes);
 app.route("/api/paypal/webhook", webhookRoutes);
 app.route("/api/agent", agentRoutes); // used BY agents (agent API key)
 app.route("/api/merchant", merchantRoutes);
+app.route("/mcp", mcpRoutes); // remote MCP for external agents (agent API key)
 
 app.notFound((c) => c.json({ error: `No route for ${c.req.method} ${c.req.path}` }, 404));
 app.onError((err) => errorResponse(err));

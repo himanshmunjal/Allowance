@@ -73,6 +73,12 @@ export const config = {
   merchantApiKey: () => required("MERCHANT_API_KEY"),
   /** PostgreSQL connection string (D-055), e.g. postgres://postgres:<password>@localhost:5432/allowance */
   databaseUrl: () => required("DATABASE_URL"),
+  /**
+   * The backend's own public URL, shown to users as the remote MCP address (D-057). Render sets
+   * RENDER_EXTERNAL_URL automatically; PUBLIC_API_URL overrides it.
+   */
+  publicApiUrl: () =>
+    (optional("PUBLIC_API_URL") || optional("RENDER_EXTERNAL_URL") || `http://localhost:${optional("PORT", "4000")}`).replace(/\/$/, ""),
   /** Mark the session cookie Secure when the app is served over https. */
   secureCookies: () => optional("APP_URL", "http://localhost:3000").startsWith("https://"),
 };
