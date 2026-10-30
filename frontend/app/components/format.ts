@@ -41,3 +41,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) throw new ApiError(json.error ?? `Request failed (${res.status})`, res.status);
   return json as T;
 }
+
+/** A same-site path from a ?return= / ?next= parameter, or null: never send people to another site. */
+export function safePath(value: string | null | undefined): string | null {
+  return value && value.startsWith("/") && !value.startsWith("//") ? value : null;
+}

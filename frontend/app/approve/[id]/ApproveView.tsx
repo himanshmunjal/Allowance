@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
 import DecisionTimeline from "@/app/components/DecisionTimeline";
-import { api, money, statusMeta } from "@/app/components/format";
+import { api, money, safePath, statusMeta } from "@/app/components/format";
 import type { Transaction, Wallet } from "@shared/types";
 
 type Detail = {
@@ -15,6 +16,8 @@ type Detail = {
 const CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? "";
 
 export default function ApproveView({ id }: { id: string }) {
+  // Set when the purchase started at a store's "Pay with Allowance" (D-060): offer the way back.
+  const returnTo = safePath(useSearchParams().get("return"));
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -196,7 +199,12 @@ export default function ApproveView({ id }: { id: string }) {
                   {tx.status === "FAILED" && "The payment failed. Nothing was charged."}
                   {tx.status === "BLOCKED" && "This purchase was blocked by your rules."}
                   {tx.status === "PROCESSING" && "Payment is processing…"}
-                  <div className="mt-3">
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+                    {returnTo && (
+                      <Link href={returnTo} className="font-medium underline underline-offset-2">
+                        Return to the store →
+                      </Link>
+                    )}
                     <Link href="/" className="font-medium underline underline-offset-2">
                       Back to dashboard
                     </Link>

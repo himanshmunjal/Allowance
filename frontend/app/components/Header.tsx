@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { SpendSummary, User, Wallet } from "@shared/types";
 import { api, ApiError, money } from "./format";
@@ -27,6 +28,9 @@ export default function Header({
         </div>
         <div className="order-3 w-full sm:order-none sm:w-auto sm:flex-1">{spend && <BudgetMeter spend={spend} />}</div>
         <WalletButton wallet={wallet} onChange={onChange} />
+        <Link href="/store" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink" title="A demo store that accepts Pay with Allowance">
+          🛍 Demo store
+        </Link>
         {user && <AccountMenu user={user} />}
       </div>
     </header>

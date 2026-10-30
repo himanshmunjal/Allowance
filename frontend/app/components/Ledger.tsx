@@ -96,6 +96,7 @@ function Row({ tx, onChange }: { tx: Transaction; onChange: () => void }) {
           </span>
           <span className="block text-xs text-muted">
             {tx.merchantName} · {timeAgo(tx.createdAt)} · {tx.agentName ?? (tx.source === "mcp" ? "external agent (MCP)" : "chat agent")}
+            {tx.source === "store" ? " · Pay with Allowance" : ""}
           </span>
         </span>
         <span className="text-right">
