@@ -1,0 +1,31 @@
+# dependencies (npm workspaces: one node_modules at the root, sometimes one per package)
+node_modules/
+
+# build output
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+backend/dist/
+*.tsbuildinfo
+
+# environment / secrets: never commit real keys; the .env.example files are the templates
+.env
+.env.*
+!.env.example
+
+# old local SQLite database (no longer used: the app runs on PostgreSQL, D-055)
+backend/data/
+
+# logs
+npm-debug.log*
+*.log
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# misc
+*.pem
+coverage/
+.vercel

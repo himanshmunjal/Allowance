@@ -1,0 +1,28 @@
+{
+  "name": "allowance",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Allowance: a trust layer that lets AI agents pay with PayPal, within rules you set.",
+  "license": "MIT",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c magenta,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w backend && npm run build -w frontend",
+    "start": "concurrently -n backend,frontend -c magenta,cyan \"npm run start -w backend\" \"npm run start -w frontend\"",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "lint": "npm run lint -w frontend",
+    "check-ai": "npm run check-ai -w backend",
+    "mcp": "npm run mcp -w backend",
+    "mcp:demo": "npm run mcp:demo -w backend",
+    "external-buy": "npm run external-buy -w backend --"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}
