@@ -178,6 +178,14 @@ npm run external-buy -- --item "Socks" --price 9 --qty 3 --unverified
 npm run external-buy -- --suite                                      # 9 scenarios, cleans up after itself
 ```
 
+**Remote MCP (nothing to install):** the backend serves MCP over HTTP at `https://<backend>/mcp`.
+Create an agent in the dashboard (**Agents → New agent**), then point any MCP client at the URL with
+the header `Authorization: Bearer <agent key>`. The dashboard shows a ready-to-paste config:
+```json
+{ "mcpServers": { "allowance": { "type": "http", "url": "https://<backend>/mcp",
+  "headers": { "Authorization": "Bearer alw_…" } } } }
+```
+
 **b) MCP Inspector (official visual tester):** click tools and fill in arguments in your browser
 ```bash
 npx @modelcontextprotocol/inspector node node_modules/tsx/dist/cli.mjs backend/mcp/server.ts

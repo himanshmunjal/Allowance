@@ -641,3 +641,33 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
   objects is supported by every provider's strict JSON mode, an open-keyed map isn't.
 * **Status.** Accepted. Verified: engine ($46.15 electronics → ALLOW, $79 → NEEDS_APPROVAL) and
   parser ("Only ask me for electronics over $50" → threshold set, electronics removed from always-ask).
+
+## D-057 · Remote MCP over Streamable HTTP at `/mcp`  ·  *extends D-010*
+
+* **Context.** With stdio MCP, every agent had to run our MCP server on its own machine. Hosted
+  agents (and the demo) want "a URL and a key".
+* **Decision.** `POST /mcp` on the backend: MCP **Streamable HTTP**, **stateless**
+  (`WebStandardStreamableHTTPServerTransport`, `sessionIdGenerator: undefined`, JSON responses),
+  authenticated with the agent's own key (`Authorization: Bearer alw_…`). Each request builds a
+  fresh MCP server bound to that key's agent.
+  * Tool names, descriptions and schemas live once in `src/mcp/tools.ts`; the operations once in
+    `src/mcp/ops.ts`. The REST API (`/api/agent/*`), the remote `/mcp` and the local stdio server
+    all use them, so they can't drift apart.
+  * The dashboard's Agents tab shows the MCP URL (from `RENDER_EXTERNAL_URL` on Render, or
+    `PUBLIC_API_URL`) and, when a key is created, a ready-to-paste MCP client config.
+* **Why stateless?** No session store, works across restarts/instances, and a revoked or paused
+  agent takes effect on the very next request.
+* **Status.** Accepted. Verified with the SDK's HTTP client: wrong key rejected; 5 tools listed;
+  status shows the agent; casino → BLOCKED; withdraw works; stdio server still works.
+
+## D-058 · Decision timeline per purchase
+
+* **Context.** The safety story was hidden in a list of reason strings.
+* **Decision.** The pipeline records each step it ran as `checks: {step, label, outcome, detail}[]`
+  (new `transactions.checks` JSONB, added with `ADD COLUMN IF NOT EXISTS`): price verified (and
+  where the price came from) → your rules → the agent's allowance → prompt-injection screen →
+  saved PayPal → AI risk check → final budget check → decision. `evaluatePolicy` now also returns
+  the user-rules and agent-allowance results separately. The UI adds a live **PayPal** step from
+  the purchase status (paid / approved / refunded / withdrawn / failed) and shows the timeline in
+  the ledger and on the approval page. Older purchases fall back to the reason list.
+* **Status.** Accepted. Verified on a blocked (casino) and an auto-paid (2× tea) purchase.

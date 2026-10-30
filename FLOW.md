@@ -344,6 +344,16 @@ merchant-initiated vaulted payments (auto-pay), refunds, plus the MCP path.
 | 18.3 | Engine test: electronics over $50 → $46.15 ALLOW, $79 NEEDS_APPROVAL | ✅ |
 | 18.4 | Parser test (Groq after Gemini hit its free quota) | ✅ both sentences parsed correctly |
 
+## Phase 19: Remote MCP + decision timeline (D-057, D-058)
+
+| Step | What | Result |
+|---|---|---|
+| 19.1 | `src/mcp/tools.ts` (shared tool definitions) + `src/mcp/ops.ts` (shared agent operations) | ✅ REST, remote MCP and stdio all use them |
+| 19.2 | `POST /mcp`: stateless Streamable HTTP, agent key as Bearer | ✅ wrong key → 401; 5 tools; status/search/purchase/withdraw |
+| 19.3 | `checks` timeline recorded by the pipeline; `transactions.checks` column | ✅ casino BLOCKED + 2× tea auto-paid both have full timelines |
+| 19.4 | Test side effect: 2× tea ($58) auto-paid under the builder's $100 rule → refunded | ✅ PayPal refund `58Y37885247247030` |
+| 19.5 | UI: `DecisionTimeline` in ledger + approval page; Agents tab shows MCP URL + client config | ✅ typecheck, lint, `next build` |
+
 ## Next steps (to do with real keys)
 1. Fill `backend/.env` and `frontend/.env.local` (see README) → `npm run check-ai` → `npm run dev`.
 2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund.
