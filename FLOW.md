@@ -354,6 +354,13 @@ merchant-initiated vaulted payments (auto-pay), refunds, plus the MCP path.
 | 19.4 | Test side effect: 2× tea ($58) auto-paid under the builder's $100 rule → refunded | ✅ PayPal refund `58Y37885247247030` |
 | 19.5 | UI: `DecisionTimeline` in ledger + approval page; Agents tab shows MCP URL + client config | ✅ typecheck, lint, `next build` |
 
+## Phase 20: Redundant thresholds fix (D-059)
+
+| Step | What | Result |
+|---|---|---|
+| 20.1 | Builder spotted "ask for <every category> over $150" after a rules update | ✅ confirmed parser bug |
+| 20.2 | `sanitizePolicy` drops thresholds ≥ auto-pay limit (on save and read); stricter parser prompt | ✅ saved rules clean, real thresholds kept, re-parse gives none |
+
 ## Next steps (to do with real keys)
 1. Fill `backend/.env` and `frontend/.env.local` (see README) → `npm run check-ai` → `npm run dev`.
 2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund.

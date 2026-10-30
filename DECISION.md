@@ -660,6 +660,18 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
 * **Status.** Accepted. Verified with the SDK's HTTP client: wrong key rejected; 5 tools listed;
   status shows the agent; casino → BLOCKED; withdraw works; stdio server still works.
 
+## D-059 · Drop redundant category thresholds  ·  *fixes D-056*
+
+* **Context.** "Pay automatically up to $150, ask me above that…" was parsed into
+  "ask for coffee/groceries/gifts/… over $150": the model copied the general auto-pay limit into
+  every category. Harmless (anything over $150 already asks) but confusing in the UI.
+* **Decision.** (1) Deterministic: `sanitizePolicy` drops any threshold ≥ the auto-pay limit (it
+  can never change a decision), and rules are sanitised on read as well as on save, so already
+  saved rules display cleanly. (2) Prompt: thresholds only when the user names a category *and*
+  its own amount; never copy the general limit.
+* **Status.** Accepted. Verified: the saved rules clean up; "electronics over $50" is kept; the same
+  sentence re-parsed gives no thresholds.
+
 ## D-058 · Decision timeline per purchase
 
 * **Context.** The safety story was hidden in a list of reason strings.
