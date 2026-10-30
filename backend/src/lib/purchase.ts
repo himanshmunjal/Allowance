@@ -1,13 +1,13 @@
-import { resolveProduct } from "./catalog";
+import { resolveProduct, type Product } from "./catalog";
 import { Channel3Error } from "./channel3";
 import { config } from "./config";
 import { audit, getTransaction, insertTransaction, updateTransaction, withTransaction, type NewTransaction } from "./db";
 import * as paypal from "./paypal";
-import { evaluatePolicy, getPolicy, spendSummary, stricter, type Verdict } from "./policy";
+import { evaluatePolicy, getPolicy, spendSummary, stricter, type StepResult, type Verdict } from "./policy";
 import { detectInjection } from "./injection";
 import { assessRisk, type RiskAssessment } from "./risk";
 import { getAgent, type AgentContext } from "./agents";
-import type { PurchaseResult, Transaction, TxSource } from "../shared/types";
+import type { DecisionCheck, PurchaseResult, Transaction, TxSource } from "../shared/types";
 import { getVaultId, setWalletConnected } from "./wallet";
 
 // THE purchase pipeline. Every spend, from the chat agent or from an MCP client, goes through
@@ -52,14 +52,32 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
   // never reaches the AI or PayPal.
   const rules = evaluatePolicy(policy, await spendSummary(userId, policy), { product, merchant, amount }, req.agent);
 
+  // Decision timeline (D-058): every step the pipeline runs, in order, for the ledger and approval page.
+  const checks: DecisionCheck[] = [
+    {
+      step: "price",
+      label: "Price verified",
+      outcome: "pass",
+      detail: `${fmt(product.price)}${quantity > 1 ? ` × ${quantity} = ${fmt(amount)}` : ""} · ${PRICE_SOURCE[product.source ?? "demo"]}`,
+    },
+    stepCheck("rules", "Your rules", rules.rules),
+    ...(rules.agent ? [stepCheck("agent", `${req.agent.name}'s allowance`, rules.agent)] : []),
+  ];
+
   // Free, deterministic prompt-injection screen of the listing (D-035): works on any model.
   const injection = detectInjection(product.description);
   if (injection.flagged) {
     rules.verdict = "BLOCK";
     rules.reasons.unshift(`Listing looks like a prompt injection: it ${injection.reasons.join(", ")}`);
   }
+  checks.push({
+    step: "injection",
+    label: "Prompt-injection screen",
+    outcome: injection.flagged ? "block" : "pass",
+    detail: injection.flagged ? `Listing ${injection.reasons.join(", ")}` : "No instructions aimed at AI agents in the listing",
+  });
 
-  const base: Omit<NewTransaction, "status" | "decisionReasons" | "riskLevel" | "riskReason"> = {
+  const base: Omit<NewTransaction, "status" | "decisionReasons" | "checks" | "riskLevel" | "riskReason"> = {
     userId,
     agentId: req.agent.id,
     agentName: req.agent.name,
@@ -77,7 +95,11 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
   };
 
   if (rules.verdict === "BLOCK") {
-    const tx = await insertTransaction({ ...base, status: "BLOCKED", decisionReasons: rules.reasons, riskLevel: null, riskReason: null });
+    checks.push(
+      { step: "risk", label: "AI risk check", outcome: "skip", detail: "Not needed: already blocked" },
+      { step: "decision", label: "Decision", outcome: "block", detail: "Blocked: nothing was paid" },
+    );
+    const tx = await insertTransaction({ ...base, status: "BLOCKED", decisionReasons: rules.reasons, checks, riskLevel: null, riskReason: null });
     await audit(userId, "PURCHASE_BLOCKED", `Blocked ${product.name} (${fmt(amount)}) from ${req.agent.name}: ${rules.reasons.join("; ")}`, tx.id);
     return result(tx);
   }
@@ -90,6 +112,9 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
   if (verdict === "ALLOW" && !vaultId) {
     verdict = "NEEDS_APPROVAL";
     reasons.push("No PayPal wallet connected for auto-pay, so this needs your approval");
+    checks.push({ step: "wallet", label: "Saved PayPal", outcome: "ask", detail: "No saved PayPal for auto-pay, so you approve in PayPal" });
+  } else if (verdict === "ALLOW") {
+    checks.push({ step: "wallet", label: "Saved PayPal", outcome: "pass", detail: "Your saved PayPal is ready for auto-pay" });
   }
 
   // 5. AI intent / risk check: can only make the verdict stricter. In "autopay" mode it only runs
@@ -116,8 +141,15 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
       if (risk.level === "medium") verdict = stricter(verdict, "NEEDS_APPROVAL");
       reasons.push(`AI risk check (${risk.level}): ${risk.reason}`);
     }
+    checks.push({
+      step: "risk",
+      label: `AI risk check: ${risk.level}`,
+      outcome: risk.level === "high" ? "block" : risk.level === "medium" ? "ask" : "pass",
+      detail: risk.reason,
+    });
   } else {
     reasons.push("AI risk check skipped: you are reviewing this purchase yourself");
+    checks.push({ step: "risk", label: "AI risk check", outcome: "skip", detail: "Skipped: you are reviewing this purchase yourself" });
   }
 
   // 6. Re-check the budgets and insert in one database transaction. A per-user advisory lock
@@ -132,10 +164,22 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
         verdict = "BLOCK";
         reasons.splice(0, reasons.length, ...recheck.reasons);
       }
+      checks.push({
+        step: "recheck",
+        label: "Final budget check",
+        outcome: recheck.verdict === "BLOCK" ? "block" : "pass",
+        detail: recheck.verdict === "BLOCK" ? recheck.reasons.join("; ") : "Budgets re-checked at the moment of the decision (no double-spending)",
+      });
     }
+    checks.push({
+      step: "decision",
+      label: "Decision",
+      outcome: verdict === "BLOCK" ? "block" : verdict === "NEEDS_APPROVAL" ? "ask" : "pass",
+      detail: verdict === "BLOCK" ? "Blocked: nothing was paid" : verdict === "NEEDS_APPROVAL" ? "Waiting for your approval in PayPal" : "Approved for auto-pay",
+    });
     // PROCESSING reserves the budget while the PayPal capture below is in flight.
     const status = verdict === "BLOCK" ? "BLOCKED" : verdict === "NEEDS_APPROVAL" ? "PENDING_APPROVAL" : "PROCESSING";
-    return insertTransaction({ ...base, status, decisionReasons: reasons, riskLevel: risk?.level ?? null, riskReason: risk?.reason ?? null }, client);
+    return insertTransaction({ ...base, status, decisionReasons: reasons, checks, riskLevel: risk?.level ?? null, riskReason: risk?.reason ?? null }, client);
   });
 
   if (tx.status === "BLOCKED") {
@@ -322,3 +366,18 @@ function result(tx: Transaction): PurchaseResult {
 }
 
 const fmt = (n: number) => `$${n.toFixed(2)}`;
+
+const PRICE_SOURCE: Record<NonNullable<Product["source"]>, string> = {
+  demo: "price from the catalog, not from the agent",
+  channel3: "live price re-checked with Channel3 just now",
+  quote: "price set by the store's checkout quote",
+};
+
+function stepCheck(step: DecisionCheck["step"], label: string, r: StepResult): DecisionCheck {
+  return {
+    step,
+    label,
+    outcome: r.verdict === "BLOCK" ? "block" : r.verdict === "NEEDS_APPROVAL" ? "ask" : "pass",
+    detail: r.reasons.join("; "),
+  };
+}

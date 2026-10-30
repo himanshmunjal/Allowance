@@ -30,6 +30,14 @@ export type TxSource = "chat" | "mcp";
 
 export type RiskLevel = "low" | "medium" | "high";
 
+/** One step of a purchase's decision timeline (D-058), in the order the pipeline ran them. */
+export type DecisionCheck = {
+  step: "price" | "rules" | "agent" | "injection" | "wallet" | "risk" | "recheck" | "decision";
+  label: string;
+  outcome: "pass" | "ask" | "block" | "skip";
+  detail: string;
+};
+
 export type Transaction = {
   id: string;
   userId: string;
@@ -49,6 +57,8 @@ export type Transaction = {
   userIntent: string;
   agentReason: string;
   decisionReasons: string[];
+  /** Decision timeline; empty for purchases made before it existed. */
+  checks: DecisionCheck[];
   riskLevel: RiskLevel | null;
   riskReason: string | null;
   paypalOrderId: string | null;

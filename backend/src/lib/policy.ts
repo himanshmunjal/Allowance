@@ -113,12 +113,25 @@ export async function spendSummary(userId: string, policy: Policy, on?: Queryabl
 
 export type Verdict = "ALLOW" | "NEEDS_APPROVAL" | "BLOCK";
 
-export type PolicyResult = { verdict: Verdict; reasons: string[] };
+/** One rule source's outcome: the user's rules, or the agent's allowance. */
+export type StepResult = { verdict: Verdict; reasons: string[] };
+
+/** Combined verdict + reasons, plus each source's own result for the decision timeline (D-058). */
+export type PolicyResult = StepResult & { rules: StepResult; agent: StepResult | null };
 
 const rank: Record<Verdict, number> = { ALLOW: 0, NEEDS_APPROVAL: 1, BLOCK: 2 };
 
 export function stricter(a: Verdict, b: Verdict): Verdict {
   return rank[a] >= rank[b] ? a : b;
+}
+
+type Bucket = { blocks: string[]; asks: string[]; passes: string[] };
+const bucket = (): Bucket => ({ blocks: [], asks: [], passes: [] });
+
+function result(b: Bucket): StepResult {
+  if (b.blocks.length) return { verdict: "BLOCK", reasons: b.blocks };
+  if (b.asks.length) return { verdict: "NEEDS_APPROVAL", reasons: b.asks };
+  return { verdict: "ALLOW", reasons: b.passes };
 }
 
 export function evaluatePolicy(
@@ -129,61 +142,66 @@ export function evaluatePolicy(
 ): PolicyResult {
   const { product, merchant, amount } = candidate;
   const money = (n: number) => `$${n.toFixed(2)}`;
-  const blocks: string[] = [];
-  const asks: string[] = [];
-  const passes: string[] = [];
+  const r = bucket();
 
   if (policy.allowedMerchants.length > 0 && !policy.allowedMerchants.includes(merchant.id)) {
-    blocks.push(`${merchant.name} is not on your allowed-merchant list`);
+    r.blocks.push(`${merchant.name} is not on your allowed-merchant list`);
   }
   if (!merchant.verified) {
-    if (policy.unverifiedMerchants === "block") blocks.push(`${merchant.name} is an unverified seller`);
-    else if (policy.unverifiedMerchants === "approve") asks.push(`${merchant.name} is an unverified seller`);
+    if (policy.unverifiedMerchants === "block") r.blocks.push(`${merchant.name} is an unverified seller`);
+    else if (policy.unverifiedMerchants === "approve") r.asks.push(`${merchant.name} is an unverified seller`);
   }
   if (policy.blockedCategories.includes(product.category as Policy["blockedCategories"][number])) {
-    blocks.push(`"${product.category}" is a blocked category`);
+    r.blocks.push(`"${product.category}" is a blocked category`);
   }
   if (amount > policy.perPurchaseMax) {
-    blocks.push(`${money(amount)} is over your ${money(policy.perPurchaseMax)} per-purchase cap`);
+    r.blocks.push(`${money(amount)} is over your ${money(policy.perPurchaseMax)} per-purchase cap`);
   }
   if (amount > spend.remaining) {
-    blocks.push(`${money(amount)} exceeds the ${money(spend.remaining)} left in this week's budget`);
+    r.blocks.push(`${money(amount)} exceeds the ${money(spend.remaining)} left in this week's budget`);
   } else {
-    passes.push(`Fits the weekly budget (${money(spend.remaining - amount)} left after this)`);
+    r.passes.push(`Fits the weekly budget (${money(spend.remaining - amount)} left after this)`);
   }
   if (policy.approvalCategories.includes(product.category as Policy["approvalCategories"][number])) {
-    asks.push(`You asked to approve every "${product.category}" purchase`);
+    r.asks.push(`You asked to approve every "${product.category}" purchase`);
   }
   const threshold = policy.categoryAskAbove.find((t) => t.category === product.category);
   if (threshold) {
-    if (amount > threshold.amount) asks.push(`You asked to approve "${product.category}" purchases over ${money(threshold.amount)}`);
-    else passes.push(`Under your ${money(threshold.amount)} approval threshold for "${product.category}"`);
+    if (amount > threshold.amount) r.asks.push(`You asked to approve "${product.category}" purchases over ${money(threshold.amount)}`);
+    else r.passes.push(`Under your ${money(threshold.amount)} approval threshold for "${product.category}"`);
   }
   if (amount > policy.autoApproveLimit) {
-    asks.push(`${money(amount)} is above your ${money(policy.autoApproveLimit)} auto-pay limit`);
+    r.asks.push(`${money(amount)} is above your ${money(policy.autoApproveLimit)} auto-pay limit`);
   } else {
-    passes.push(`Within your ${money(policy.autoApproveLimit)} auto-pay limit`);
+    r.passes.push(`Within your ${money(policy.autoApproveLimit)} auto-pay limit`);
   }
 
   // The agent's own allowance (D-054): only ever stricter than the user's rules.
+  let a: Bucket | null = null;
   if (agent) {
+    a = bucket();
     const who = `"${agent.name}"`;
-    if (agent.status !== "active") blocks.push(`Agent ${who} is paused`);
+    if (agent.status !== "active") a.blocks.push(`Agent ${who} is paused`);
     if (agent.allowedCategories.length && !agent.allowedCategories.includes(product.category as Policy["blockedCategories"][number])) {
-      blocks.push(`Agent ${who} may only buy ${agent.allowedCategories.join(", ")}`);
+      a.blocks.push(`Agent ${who} may only buy ${agent.allowedCategories.join(", ")}`);
     }
     if (agent.weeklyBudget !== null) {
       const left = Math.max(0, agent.weeklyBudget - agent.spentThisWeek);
-      if (amount > left) blocks.push(`${money(amount)} exceeds the ${money(left)} left in ${who}'s ${money(agent.weeklyBudget)} weekly allowance`);
-      else passes.push(`Fits ${who}'s weekly allowance (${money(left - amount)} left after this)`);
+      if (amount > left) a.blocks.push(`${money(amount)} exceeds the ${money(left)} left in ${who}'s ${money(agent.weeklyBudget)} weekly allowance`);
+      else a.passes.push(`Fits ${who}'s weekly allowance (${money(left - amount)} left after this)`);
     }
-    if (agent.alwaysAsk) asks.push(`You asked to approve every purchase by ${who}`);
+    if (agent.alwaysAsk) a.asks.push(`You asked to approve every purchase by ${who}`);
     if (agent.autoPayLimit !== null && amount > agent.autoPayLimit && amount <= policy.autoApproveLimit) {
-      asks.push(`${money(amount)} is above ${who}'s ${money(agent.autoPayLimit)} auto-pay limit`);
+      a.asks.push(`${money(amount)} is above ${who}'s ${money(agent.autoPayLimit)} auto-pay limit`);
     }
   }
 
-  if (blocks.length) return { verdict: "BLOCK", reasons: blocks };
-  if (asks.length) return { verdict: "NEEDS_APPROVAL", reasons: asks };
-  return { verdict: "ALLOW", reasons: passes };
+  const all: Bucket = {
+    blocks: [...r.blocks, ...(a?.blocks ?? [])],
+    asks: [...r.asks, ...(a?.asks ?? [])],
+    passes: [...r.passes, ...(a?.passes ?? [])],
+  };
+  const agentStep = a && result(a);
+  if (agentStep && !agentStep.reasons.length) agentStep.reasons = [`No extra limits on "${agent!.name}": your rules apply`];
+  return { ...result(all), rules: result(r), agent: agentStep };
 }

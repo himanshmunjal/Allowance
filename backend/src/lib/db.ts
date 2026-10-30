@@ -132,6 +132,8 @@ async function migrate(p: pg.Pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- Added after the first deploy (D-058); IF NOT EXISTS keeps re-runs and older databases happy.
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS checks JSONB NOT NULL DEFAULT '[]';
     CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tx_agent ON transactions(agent_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tx_order ON transactions(paypal_order_id);
@@ -191,6 +193,7 @@ type TxRow = {
   user_intent: string;
   agent_reason: string;
   decision_reasons: string[];
+  checks: Transaction["checks"] | null;
   risk_level: string | null;
   risk_reason: string | null;
   paypal_order_id: string | null;
@@ -219,6 +222,7 @@ function toTransaction(r: TxRow): Transaction {
     userIntent: r.user_intent,
     agentReason: r.agent_reason,
     decisionReasons: r.decision_reasons,
+    checks: r.checks ?? [],
     riskLevel: r.risk_level as Transaction["riskLevel"],
     riskReason: r.risk_reason,
     paypalOrderId: r.paypal_order_id,
@@ -237,13 +241,13 @@ export type NewTransaction = Omit<
 export async function insertTransaction(tx: NewTransaction, on?: Queryable): Promise<Transaction> {
   const row = await queryOne<TxRow>(
     `INSERT INTO transactions (id, user_id, agent_id, agent_name, source, status, merchant_id, merchant_name, product_id,
-       title, quantity, unit_price, amount, currency, user_intent, agent_reason, decision_reasons, risk_level, risk_reason)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       title, quantity, unit_price, amount, currency, user_intent, agent_reason, decision_reasons, risk_level, risk_reason, checks)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
      RETURNING *`,
     [
       newId("tx"), tx.userId, tx.agentId, tx.agentName, tx.source, tx.status, tx.merchantId, tx.merchantName, tx.productId,
       tx.title, tx.quantity, tx.unitPrice, tx.amount, tx.currency, tx.userIntent, tx.agentReason, jsonb(tx.decisionReasons),
-      tx.riskLevel, tx.riskReason,
+      tx.riskLevel, tx.riskReason, jsonb(tx.checks),
     ],
     on,
   );
