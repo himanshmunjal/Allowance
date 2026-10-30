@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { Agent, Category } from "@shared/types";
 import { api, money, timeAgo } from "./format";
 
@@ -29,13 +29,31 @@ const fromDraft = (d: Draft) => ({
   alwaysAsk: d.alwaysAsk,
 });
 
+type Connect = { mcpUrl: string; apiUrl: string };
+
 export default function AgentsPanel({ agents, onChange }: { agents: Agent[]; onChange: () => void }) {
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<{ name: string; apiKey: string } | null>(null);
+  const [connect, setConnect] = useState<Connect | null>(null);
+
+  useEffect(() => {
+    api<Connect>("/api/agents/connect")
+      .then(setConnect)
+      .catch(() => setConnect(null));
+  }, []);
 
   return (
     <div className="space-y-3 p-4">
-      {newKey && <KeyReveal {...newKey} onDone={() => setNewKey(null)} />}
+      {newKey && <KeyReveal {...newKey} mcpUrl={connect?.mcpUrl ?? null} onDone={() => setNewKey(null)} />}
+
+      {connect && (
+        <div className="rounded-xl bg-panel-2 p-3 text-[11px]">
+          <div className="font-medium text-ink">Connect any MCP agent (Claude, ChatGPT, Cursor…)</div>
+          <div className="mt-1 text-muted">
+            Server URL <CopyText text={connect.mcpUrl} /> with header <code className="font-mono">Authorization: Bearer &lt;agent key&gt;</code>
+          </div>
+        </div>
+      )}
 
       {creating ? (
         <AgentForm
@@ -274,8 +292,11 @@ function AgentForm({
   );
 }
 
-function KeyReveal({ name, apiKey, onDone }: { name: string; apiKey: string; onDone: () => void }) {
+function KeyReveal({ name, apiKey, mcpUrl, onDone }: { name: string; apiKey: string; mcpUrl: string | null; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
+  const config = mcpUrl
+    ? JSON.stringify({ mcpServers: { allowance: { type: "http", url: mcpUrl, headers: { Authorization: `Bearer ${apiKey}` } } } }, null, 2)
+    : null;
   return (
     <div className="rounded-xl border border-ok/40 bg-ok-soft p-3 text-xs">
       <div className="font-semibold text-ok">“{name}” is ready. Copy its API key now</div>
@@ -291,7 +312,14 @@ function KeyReveal({ name, apiKey, onDone }: { name: string; apiKey: string; onD
           {copied ? "Copied ✓" : "Copy"}
         </button>
       </div>
-      <button onClick={onDone} className="mt-2 text-[11px] text-muted hover:text-ink">
+      {config && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-muted hover:text-ink">MCP client config (remote, nothing to install)</summary>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-panel p-2 font-mono text-[10px] leading-relaxed">{config}</pre>
+          <CopyText text={config} label="Copy config" />
+        </details>
+      )}
+      <button onClick={onDone} className="mt-2 block text-[11px] text-muted hover:text-ink">
         I&apos;ve saved it
       </button>
     </div>
@@ -301,4 +329,18 @@ function KeyReveal({ name, apiKey, onDone }: { name: string; apiKey: string; onD
 function Tag({ children, tone }: { children: React.ReactNode; tone?: "ok" | "warn" }) {
   const cls = tone === "ok" ? "bg-ok-soft text-ok" : tone === "warn" ? "bg-warn-soft text-warn" : "bg-panel-2 text-ink";
   return <span className={`rounded-md px-1.5 py-0.5 ${cls}`}>{children}</span>;
+}
+
+function CopyText({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => navigator.clipboard?.writeText(text).then(() => setCopied(true))}
+      className="rounded-md bg-panel px-1.5 py-0.5 font-mono text-[11px] text-brand ring-1 ring-line hover:bg-brand-soft"
+      title="Copy"
+    >
+      {copied ? "Copied ✓" : (label ?? text)}
+    </button>
+  );
 }

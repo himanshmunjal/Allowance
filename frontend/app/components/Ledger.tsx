@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Agent, AuditEvent, Transaction } from "@shared/types";
 import AgentsPanel from "./AgentsPanel";
+import DecisionTimeline from "./DecisionTimeline";
 import { api, money, statusMeta, timeAgo } from "./format";
 
 export default function Ledger({
@@ -107,6 +108,12 @@ function Row({ tx, onChange }: { tx: Transaction; onChange: () => void }) {
         <div className="mt-2.5 space-y-2 rounded-xl bg-panel-2 p-3 text-xs">
           <Field label="You asked">{tx.userIntent}</Field>
           <Field label="Agent's reason">{tx.agentReason}</Field>
+          {tx.checks?.length ? (
+            <div>
+              <div className="mb-1.5 text-muted">Decision timeline</div>
+              <DecisionTimeline tx={tx} />
+            </div>
+          ) : (
           <div>
             <div className="mb-0.5 text-muted">Decision</div>
             <ul className="space-y-0.5">
@@ -118,6 +125,7 @@ function Row({ tx, onChange }: { tx: Transaction; onChange: () => void }) {
               ))}
             </ul>
           </div>
+          )}
           {(tx.paypalOrderId || tx.paypalCaptureId) && (
             <div className="font-mono text-[10px] text-muted">
               {tx.paypalOrderId && <div>PayPal order {tx.paypalOrderId}</div>}

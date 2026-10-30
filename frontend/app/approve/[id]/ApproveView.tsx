@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
+import DecisionTimeline from "@/app/components/DecisionTimeline";
 import { api, money, statusMeta } from "@/app/components/format";
 import type { Transaction, Wallet } from "@shared/types";
 
@@ -116,8 +117,11 @@ export default function ApproveView({ id }: { id: string }) {
                   <dd>{tx.agentReason}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-muted">Why it needs you</dt>
-                  <dd>
+                  <dt className="text-xs text-muted">{tx.checks?.length ? "Every check this purchase went through" : "Why it needs you"}</dt>
+                  <dd className="mt-1.5">
+                    {tx.checks?.length ? (
+                      <DecisionTimeline tx={tx} />
+                    ) : (
                     <ul className="mt-1 space-y-1">
                       {tx.decisionReasons.map((r, i) => (
                         <li key={i} className="flex gap-1.5 text-[13px]">
@@ -126,6 +130,7 @@ export default function ApproveView({ id }: { id: string }) {
                         </li>
                       ))}
                     </ul>
+                    )}
                   </dd>
                 </div>
               </dl>
