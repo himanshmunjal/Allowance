@@ -13,6 +13,14 @@ import { registerAllowanceTools, SERVER_INFO, SERVER_INSTRUCTIONS } from "./tool
 
 export const mcpRoutes = new Hono<AppEnv>()
   .use("*", requireAgentKey)
+  // Stateless: no server-to-client event stream to open. Say so instead of hanging an empty stream.
+  .get("/", (c) =>
+    c.json(
+      { jsonrpc: "2.0", error: { code: -32000, message: "Use POST with a JSON-RPC body (e.g. tools/list). This server has no GET event stream." }, id: null },
+      405,
+      { Allow: "POST" },
+    ),
+  )
   .all("/", async (c) => {
     const server = new McpServer(SERVER_INFO, { instructions: SERVER_INSTRUCTIONS });
     registerAllowanceTools(server, agentOps(c.var.agent));
