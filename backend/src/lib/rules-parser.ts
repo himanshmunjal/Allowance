@@ -23,7 +23,7 @@ Known merchants (use these ids in allowedMerchants; an empty list means any merc
 ${merchantList}
 If the user says "only buy from X", set allowedMerchants to those ids. If they say they trust a merchant, do not restrict the list.
 autoApproveLimit must not exceed perPurchaseMax.
-Category approvals: "always ask me for X" → put X in approvalCategories. "Ask me for X over $N" / "only ask for X above $N" → add {category: X, amount: N} to categoryAskAbove AND remove X from approvalCategories. "Don't ask me for X anymore" → remove X from both.`,
+Category approvals: categoryAskAbove is ONLY for a category the user names together with its own amount; otherwise leave it as it is in the current policy (usually []). Never copy the general auto-pay limit into categoryAskAbove. "always ask me for X" → put X in approvalCategories. "Ask me for X over $N" / "only ask for X above $N" → add {category: X, amount: N} to categoryAskAbove AND remove X from approvalCategories. "Don't ask me for X anymore" → remove X from both.`,
     user: `<current_policy>${JSON.stringify(current)}</current_policy>\n<user_rules>${text}</user_rules>`,
   });
   return value;

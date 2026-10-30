@@ -46,7 +46,8 @@ export async function getPolicy(userId: string): Promise<{ policy: Policy; sourc
   );
   if (!row) return { policy: DEFAULT_POLICY, sourceText: DEFAULT_POLICY_TEXT };
   // Rules saved before a field existed get its default (e.g. categoryAskAbove, D-056).
-  return { policy: PolicySchema.parse({ ...DEFAULT_POLICY, ...(row.policy as object) }), sourceText: row.source_text ?? "" };
+  // Sanitised on read too, so rules saved before a fix (e.g. redundant thresholds) display cleanly.
+  return { policy: sanitizePolicy(PolicySchema.parse({ ...DEFAULT_POLICY, ...(row.policy as object) })), sourceText: row.source_text ?? "" };
 }
 
 export async function savePolicy(userId: string, policy: Policy, sourceText?: string): Promise<Policy> {
@@ -62,19 +63,23 @@ export async function savePolicy(userId: string, policy: Policy, sourceText?: st
 }
 
 // Keep values sane whatever the UI or the rule parser sends.
-function sanitizePolicy(p: Policy): Policy {
+export function sanitizePolicy(p: Policy): Policy {
   const money = (n: number) => Math.max(0, Math.round(n * 100) / 100);
   const known = new Set(merchants.map((m) => m.id));
+  const autoApproveLimit = Math.min(money(p.autoApproveLimit), money(p.perPurchaseMax));
+  // A threshold at or above the auto-pay limit can never change a decision (anything above the
+  // limit already asks), so it's noise: drop it (D-059).
+  const thresholds = p.categoryAskAbove.filter((t) => money(t.amount) < autoApproveLimit);
   return {
     ...p,
     weeklyBudget: money(p.weeklyBudget),
     perPurchaseMax: money(p.perPurchaseMax),
-    autoApproveLimit: Math.min(money(p.autoApproveLimit), money(p.perPurchaseMax)),
+    autoApproveLimit,
     allowedMerchants: [...new Set(p.allowedMerchants.filter((id) => known.has(id)))],
     blockedCategories: [...new Set(p.blockedCategories)],
     // A threshold for a category is the more specific rule, so it replaces "always ask" for it.
-    approvalCategories: [...new Set(p.approvalCategories)].filter((c) => !p.categoryAskAbove.some((t) => t.category === c)),
-    categoryAskAbove: [...new Map(p.categoryAskAbove.map((t) => [t.category, { category: t.category, amount: money(t.amount) }])).values()],
+    approvalCategories: [...new Set(p.approvalCategories)].filter((c) => !thresholds.some((t) => t.category === c)),
+    categoryAskAbove: [...new Map(thresholds.map((t) => [t.category, { category: t.category, amount: money(t.amount) }])).values()],
   };
 }
 
