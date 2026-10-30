@@ -672,6 +672,31 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
 * **Status.** Accepted. Verified: the saved rules clean up; "electronics over $50" is kept; the same
   sentence re-parsed gives no thresholds.
 
+## D-060 · Demo storefront "Brew & Co." with "Pay with Allowance"  ·  *builds on D-051 (quotes)*
+
+* **Context.** Judges should *see* how a real store would integrate, not just an API.
+* **Decision.** A demo merchant with its own look:
+  * `/store`: product grid; each product has a **Pay with Allowance** button. The store's server
+    side (`/api/store/*`, `src/store/brew.ts`) owns the catalog and prices and creates a
+    **checkout quote** (the store sets the price, as in D-051), then redirects to
+  * `/checkout/[quoteId]` (**Allowance Checkout**, login required): the user picks **which agent is
+    buying** and confirms what it was asked to buy; the purchase runs the normal pipeline with
+    `source: "store"`, and the page shows the **decision timeline** (D-058), then auto-pay,
+    "Review & approve in PayPal" (the approval page offers a way back), or a decline.
+  * `/store/order/[quoteId]`: the store's order page polls what Allowance decided (status, amount,
+    agent name; no buyer details).
+  * The store page also documents the **agent path**: list products → create quote → MCP
+    `request_purchase(product_id = quoteId)`.
+* **Why inside this repo?** One deploy, no extra keys: the store's server code calls `createQuote`
+  directly instead of `/api/merchant/quotes`, but it is the same contract a real store would use.
+  Payments still settle to the one sandbox merchant (D-009); a real store would be paid directly
+  via PayPal multiparty onboarding.
+* **Also:** `GET /mcp` now answers 405 "use POST" instead of opening an empty event stream (it
+  confused manual testing in an HTTP client).
+* **Status.** Accepted. Verified end to end with a throwaway account (deleted afterwards):
+  $34 beans → PENDING_APPROVAL (over $25) with a full timeline; $999 espresso machine → BLOCKED
+  (cap + budget); the store's order page reflects both; checkout requires login.
+
 ## D-058 · Decision timeline per purchase
 
 * **Context.** The safety story was hidden in a list of reason strings.

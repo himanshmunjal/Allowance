@@ -361,6 +361,16 @@ merchant-initiated vaulted payments (auto-pay), refunds, plus the MCP path.
 | 20.1 | Builder spotted "ask for <every category> over $150" after a rules update | ✅ confirmed parser bug |
 | 20.2 | `sanitizePolicy` drops thresholds ≥ auto-pay limit (on save and read); stricter parser prompt | ✅ saved rules clean, real thresholds kept, re-parse gives none |
 
+## Phase 21: Demo storefront + Pay with Allowance (D-060)
+
+| Step | What | Result |
+|---|---|---|
+| 21.1 | `src/store/brew.ts` + `/api/store/products|checkout|orders/:quoteId` (store's server side) | ✅ |
+| 21.2 | `/api/checkout/:quoteId` (session): pick agent → normal pipeline, `source: "store"` | ✅ |
+| 21.3 | Pages: `/store`, `/checkout/[quoteId]`, `/store/order/[quoteId]`; approval page "Return to the store"; header "Demo store" link | ✅ typecheck, lint, `next build` |
+| 21.4 | E2E with a throwaway account: $34 beans → approval; $999 espresso → blocked; store order page in sync | ✅ test data deleted |
+| 21.5 | `GET /mcp` → 405 "use POST" | ✅ |
+
 ## Next steps (to do with real keys)
 1. Fill `backend/.env` and `frontend/.env.local` (see README) → `npm run check-ai` → `npm run dev`.
 2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund.

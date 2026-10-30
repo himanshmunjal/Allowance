@@ -178,6 +178,12 @@ npm run external-buy -- --item "Socks" --price 9 --qty 3 --unverified
 npm run external-buy -- --suite                                      # 9 scenarios, cleans up after itself
 ```
 
+**Demo store with "Pay with Allowance":** open `/store` ("Brew & Co.", or click **🛍 Demo store** in the
+dashboard header). The store prices the order and hands over to **Allowance Checkout**, where you pick
+which agent is buying; Allowance shows the decision timeline and pays with PayPal, asks you, or declines.
+The store's order page shows the result. Agents can buy there too: `POST /api/store/checkout` → `quoteId`
+→ MCP `request_purchase`.
+
 **Remote MCP (nothing to install):** the backend serves MCP over HTTP at `https://<backend>/mcp`.
 Create an agent in the dashboard (**Agents → New agent**), then point any MCP client at the URL with
 the header `Authorization: Bearer <agent key>`. The dashboard shows a ready-to-paste config:
