@@ -1,0 +1,91 @@
+// Allowance - system architecture. Regenerate with:
+//   dot -Tpng -Gdpi=150 docs/architecture.dot -o architecture.png
+digraph Allowance {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=24, labelloc=t, pad=0.5, nodesep=0.5, ranksep=0.7, newrank=true, splines=spline,
+         label=<<B>Allowance</B>: a trust layer that lets AI agents pay with PayPal, safely<BR/><FONT POINT-SIZE="14" COLOR="#555555">frontend/ (Next.js UI) · backend/ (Hono API) · AI: Gemini / Groq free tiers or Claude · PayPal sandbox</FONT><BR/> >];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13, color="#9aa5b1", fillcolor="#ffffff", margin="0.22,0.12"];
+  edge  [fontname="Helvetica", fontsize=11, color="#52606d", fontcolor="#323f4b", arrowsize=0.8];
+
+  // ---------- who asks ----------
+  user     [label=<<B>User (browser)</B><BR/><FONT POINT-SIZE="11">chats · writes rules · approves · refunds</FONT>>, fillcolor="#e6f6ff", color="#2186eb"];
+  extagent [label=<<B>External AI agent</B><BR/><FONT POINT-SIZE="11">Claude Desktop / any MCP client</FONT>>, fillcolor="#e6f6ff", color="#2186eb"];
+
+  // ---------- frontend ----------
+  subgraph cluster_frontend {
+    label=<<B>frontend/</B>  Next.js 16 · React · Tailwind  (port 3000)>; style="rounded,filled"; fillcolor="#f0f7ff"; color="#7fb2e5"; fontsize=15;
+    chat    [label=<<B>Agent chat</B><BR/><FONT POINT-SIZE="11">trace of every tool call</FONT>>];
+    rules   [label=<<B>Rules panel</B><BR/><FONT POINT-SIZE="11">policies in plain English</FONT>>];
+    ledger  [label=<<B>Live ledger</B><BR/><FONT POINT-SIZE="11">audit trail · 1-tap refund</FONT>>];
+    approve [label=<<B>Approval page</B><BR/><FONT POINT-SIZE="11">PayPal JS SDK v6 button</FONT>>];
+    proxy   [label=<<B>/api/* proxy</B><BR/><FONT POINT-SIZE="11">Next rewrites → BACKEND_URL</FONT>>, fillcolor="#e3f8ff", color="#2186eb"];
+  }
+
+  // ---------- backend ----------
+  subgraph cluster_backend {
+    label=<<B>backend/</B>  Node · Hono API  (port 4000)>; style="rounded,filled"; fillcolor="#f5f7fa"; color="#9aa5b1"; fontsize=15;
+
+    routes [label=<<B>REST routes</B> (src/routes)<BR/><FONT POINT-SIZE="11">chat · policy · transactions · approvals · wallet · webhook</FONT>>];
+    mcp    [label=<<B>MCP server</B> (mcp/server.ts)<BR/><FONT POINT-SIZE="11">→ /api/agent/* with bearer key</FONT>>, fillcolor="#fffbea", color="#f0b429"];
+
+    subgraph cluster_ai {
+      label=<<B>AI layer</B>>; style="rounded"; color="#c4a7f5"; fontsize=13;
+      agent   [label=<<B>Shopping agent</B><BR/><FONT POINT-SIZE="11">tool-use loop, any provider</FONT>>, fillcolor="#f0e7ff", color="#8719e0"];
+      nlrules [label=<<B>Rule parser</B><BR/><FONT POINT-SIZE="11">English → policy JSON</FONT>>, fillcolor="#f0e7ff", color="#8719e0"];
+      risk    [label=<<B>AI risk check</B><BR/><FONT POINT-SIZE="11">does the cart match the intent?</FONT>>, fillcolor="#f0e7ff", color="#8719e0"];
+    }
+
+    subgraph cluster_core {
+      label=<<B>Trust core</B>  (deterministic, the AI cannot bypass it)>; style="rounded"; color="#f5b971"; fontsize=13;
+      catalog [label=<<B>Merchant catalog</B><BR/><FONT POINT-SIZE="11">server-side prices = truth</FONT>>];
+      pipe    [label=<<B>Purchase pipeline</B><BR/><FONT POINT-SIZE="11">the single choke-point for every spend</FONT>>, fillcolor="#fff3e0", color="#e67e22", penwidth=2.2];
+      policy  [label=<<B>Policy engine</B><BR/><FONT POINT-SIZE="11">budget · merchant allow-list · caps<BR/>+ prompt-injection screen (no AI)</FONT>>, fillcolor="#fff3e0", color="#e67e22"];
+    }
+
+    subgraph cluster_pay {
+      label=<<B>Payments &amp; storage</B>>; style="rounded"; color="#8fb3e0"; fontsize=13;
+      ppc  [label=<<B>PayPal client</B><BR/><FONT POINT-SIZE="11">OAuth token cache · idempotency keys</FONT>>, fillcolor="#e3f8ff", color="#003087"];
+      hook [label=<<B>Webhook handler</B><BR/><FONT POINT-SIZE="11">signature verified</FONT>>, fillcolor="#e3f8ff", color="#003087"];
+      db   [label=<<B>SQLite</B> (backend/data)<BR/><FONT POINT-SIZE="11">policy · vault token · transactions<BR/>audit events · conversations</FONT>>, shape=cylinder];
+    }
+  }
+
+  // ---------- external ----------
+  llm    [label=<<B>AI provider chain</B> (src/lib/llm)<BR/><FONT POINT-SIZE="11">Gemini (free) → Groq (free) → Claude (optional)<BR/>automatic fallback · tool use · JSON outputs</FONT>>, fillcolor="#f0e7ff", color="#8719e0", penwidth=1.6];
+  paypal [label=<<B>PayPal REST API (sandbox)</B><BR/><FONT POINT-SIZE="11">Orders v2 · Vault v3 · Payments refunds · Webhooks</FONT>>, fillcolor="#e3f8ff", color="#003087", penwidth=2.2];
+
+  { rank=same; user; extagent; }
+  { rank=same; chat; rules; ledger; approve; }
+  { rank=same; agent; nlrules; risk; }
+  { rank=same; catalog; pipe; policy; }
+  { rank=same; ppc; hook; db; }
+  { rank=same; llm; paypal; }
+
+  user -> chat    [label=" \"gift under $40\""];
+  user -> rules   [label=" \"ask me above $25\""];
+  user -> approve [label=" approve"];
+  user -> ledger  [label=" refund"];
+  extagent -> mcp [label=" MCP tools"];
+
+  chat -> proxy; rules -> proxy; ledger -> proxy; approve -> proxy;
+  proxy -> routes [label=" HTTP  /api/*", penwidth=1.8, color="#2186eb"];
+
+  routes -> agent;
+  routes -> nlrules;
+  mcp    -> pipe    [label=" same pipeline", penwidth=1.6];
+  agent  -> catalog [label=" search_products"];
+  agent  -> pipe    [label=" request_purchase", penwidth=1.6];
+
+  pipe -> policy [label=" 1. rules"];
+  pipe -> risk   [label=" 2. intent check\n (only if it would auto-pay)", constraint=false];
+  pipe -> ppc    [label=" 3a. within limits:\n auto-pay with vault token", color="#2f8132", fontcolor="#2f8132", penwidth=1.6];
+  pipe -> db     [label=" 3b. needs approval / 3c. blocked:\n logged with the reason", color="#e67e22", fontcolor="#e67e22"];
+
+  ppc  -> db;
+  hook -> db;
+  ppc  -> paypal [dir=both, penwidth=1.8, color="#003087"];
+  paypal -> hook [label=" PAYMENT.CAPTURE.*", style=dashed, color="#003087"];
+
+  agent   -> llm [dir=both, color="#8719e0", style=dashed];
+  nlrules -> llm [dir=both, color="#8719e0", style=dashed];
+  risk    -> llm [dir=both, color="#8719e0", style=dashed];
+}
