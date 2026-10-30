@@ -10,6 +10,8 @@ import { chatRoutes } from "./routes/chat";
 import { ledgerRoutes } from "./routes/ledger";
 import { mcpRoutes } from "./mcp/http";
 import { merchantRoutes } from "./routes/merchant";
+import { checkoutRoutes } from "./routes/checkout";
+import { storeRoutes } from "./routes/store";
 import { metaRoutes } from "./routes/meta";
 import { policyRoutes } from "./routes/policy";
 import { walletRoutes } from "./routes/wallet";
@@ -36,6 +38,8 @@ app.route("/api/wallet", walletRoutes);
 app.route("/api/paypal/webhook", webhookRoutes);
 app.route("/api/agent", agentRoutes); // used BY agents (agent API key)
 app.route("/api/merchant", merchantRoutes);
+app.route("/api/checkout", checkoutRoutes); // Allowance Checkout (session)
+app.route("/api/store", storeRoutes); // the demo merchant "Brew & Co." (public)
 app.route("/mcp", mcpRoutes); // remote MCP for external agents (agent API key)
 
 app.notFound((c) => c.json({ error: `No route for ${c.req.method} ${c.req.path}` }, 404));

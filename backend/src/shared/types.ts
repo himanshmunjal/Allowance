@@ -26,7 +26,8 @@ export type TxStatus =
   | "REFUNDED"
   | "FAILED";
 
-export type TxSource = "chat" | "mcp";
+/** chat = built-in agent, mcp = external agent, store = a store's "Pay with Allowance" checkout (D-060). */
+export type TxSource = "chat" | "mcp" | "store";
 
 export type RiskLevel = "low" | "medium" | "high";
 
