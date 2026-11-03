@@ -75,7 +75,7 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-line bg-panel">
           {error && !quote && <div className="p-6 text-sm text-bad">{error}</div>}
           {!quote && !error && <div className="p-8 text-center text-sm text-muted">Loading…</div>}
 

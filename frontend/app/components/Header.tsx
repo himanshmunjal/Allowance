@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import type { SpendSummary, User, Wallet } from "@shared/types";
 import { api, ApiError, money } from "./format";
+import { Wordmark } from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Header({
   spend,
@@ -19,13 +21,7 @@ export default function Header({
   return (
     <header className="sticky top-0 z-10 border-b border-line bg-panel/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-on-accent">A</span>
-          <div className="leading-tight">
-            <div className="font-semibold">Allowance</div>
-            <div className="hidden text-xs text-muted 2xl:block">AI agents pay with PayPal, within your rules</div>
-          </div>
-        </div>
+        <Wordmark sub="AI agents pay with PayPal, within your rules" />
         <div className="order-3 w-full lg:order-none lg:w-auto lg:min-w-0 lg:flex-1">{spend && <BudgetMeter spend={spend} />}</div>
         <WalletButton wallet={wallet} onChange={onChange} />
         <nav className="flex items-center gap-0.5">
@@ -39,6 +35,7 @@ export default function Header({
             Demo store
           </Link>
         </nav>
+        <ThemeToggle />
         {user && <AccountMenu label={user.email} />}
       </div>
     </header>
@@ -116,7 +113,7 @@ function WalletButton({ wallet, onChange }: { wallet: Wallet | null; onChange: (
   if (wallet?.status === "CONNECTED") {
     return (
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-2 rounded-xl bg-ok-soft px-3 py-2 text-xs text-ok">
+        <div className="flex items-center gap-2 rounded-lg bg-ok-soft px-3 py-2 text-xs text-ok">
           <span className="size-2 rounded-full bg-ok" />
           <span>
             <b>Auto-pay on</b>
@@ -134,15 +131,14 @@ function WalletButton({ wallet, onChange }: { wallet: Wallet | null; onChange: (
       <button
         onClick={connect}
         disabled={busy}
-        className="flex items-center gap-2 rounded-xl bg-[#ffc439] px-3.5 py-2 text-xs font-semibold text-[#003087] hover:brightness-95 disabled:opacity-60"
+        className="flex items-center gap-2 rounded-lg bg-[#ffc439] px-3.5 py-2 text-xs font-semibold text-[#1a1305] hover:brightness-95 disabled:opacity-60"
         title="Save your PayPal wallet (Vault) so the agent can pay small purchases without a popup"
       >
         {busy ? "Opening PayPal…" : "Connect PayPal for auto-pay"}
       </button>
       {message && (
         <span className={`mt-1 max-w-64 text-right text-[11px] ${message.hint ? "text-warn" : "text-bad"}`}>
-          {message.hint ? "💡 " : ""}
-          {message.text}
+                    {message.text}
         </span>
       )}
     </div>

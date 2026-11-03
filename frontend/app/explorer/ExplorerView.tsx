@@ -255,7 +255,7 @@ export default function ExplorerView() {
       {hasSample && <p className="mt-2 text-xs text-muted">Rows older than a week in this demo account are made-up sample history: no PayPal payment happened for those.</p>}
 
       {selected && (
-        <div className="mt-4 rounded-2xl border border-line bg-panel p-5 shadow-sm">
+        <div className="mt-4 rounded-xl border border-line bg-panel p-5">
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-sm font-semibold">
               {selected.title} · {money(selected.amount)}
@@ -275,7 +275,7 @@ export default function ExplorerView() {
 
 function Tile({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-panel px-4 py-3 shadow-sm">
+    <div className="rounded-xl border border-line bg-panel px-4 py-3">
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-0.5 text-lg font-semibold tabular-nums">
         {value} {note && <span className="text-xs font-normal text-muted">{note}</span>}

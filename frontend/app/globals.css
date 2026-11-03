@@ -1,48 +1,76 @@
 @import "tailwindcss";
 
 /* Semantic color tokens; components use bg-panel, text-muted, border-line, etc. */
+/* Warm paper and ink. One accent. Components use bg-panel, text-muted, border-line, etc. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
-  --bg: #f4f6fa;
+  color-scheme: light;
+  --bg: #fbfaf7;
   --panel: #ffffff;
-  --panel-2: #f8fafc;
-  --line: #e3e8ef;
-  --ink: #0f1729;
-  --muted: #5b6577;
-  --brand: #0070e0;
-  --brand-ink: #003087;
-  --brand-soft: #e8f2fd;
-  --ok: #0c6e39;
-  --ok-soft: #e6f6ec;
-  --warn: #8f4a00;
-  --warn-soft: #fff4e2;
-  --bad: #b02222;
-  --bad-soft: #fdecec;
-  --ai: #6d3fd8;
-  --ai-soft: #f1ebff;
-  /* Text and icons on a solid accent (bg-brand, bg-warn...). Dark mode's accents are light, so this flips. */
-  --on-accent: #ffffff;
+  --panel-2: #f5f3ee;
+  --line: #e7e3da;
+  --ink: #181713;
+  --muted: #6a665c;
+  --brand: #3a4ed6;
+  --brand-ink: #181713;
+  --brand-soft: #eceefc;
+  --ok: #1f6b45;
+  --ok-soft: #e8f2ec;
+  --warn: #8a5200;
+  --warn-soft: #fbf1de;
+  --bad: #b3261e;
+  --bad-soft: #fbeae8;
+  --ai: #6a4bc4;
+  --ai-soft: #f0ebfb;
+  /* Text and icons on a solid accent (bg-brand, bg-brand-ink...). Flips in dark mode. */
+  --on-accent: #fffdf8;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121110;
+  --panel: #1a1917;
+  --panel-2: #23211e;
+  --line: #34312c;
+  --ink: #f1eee7;
+  --muted: #a8a399;
+  --brand: #8b9bff;
+  --brand-ink: #f1eee7;
+  --brand-soft: #1d2142;
+  --ok: #6fd39b;
+  --ok-soft: #14281d;
+  --warn: #f0b25e;
+  --warn-soft: #2c2210;
+  --bad: #ff8d83;
+  --bad-soft: #33191a;
+  --ai: #bda8ff;
+  --ai-soft: #25203d;
+  --on-accent: #121110;
+}
+
+/* Before the theme script runs (or with scripts off), follow the system setting. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b0f17;
-    --panel: #121826;
-    --panel-2: #1b2334;
-    --line: #313c52;
-    --ink: #eef1f6;
-    --muted: #aab5c7;
-    --brand: #4aa3ff;
-    --brand-ink: #9cc9ff;
-    --brand-soft: #102640;
-    --ok: #5dd694;
-    --ok-soft: #10291c;
-    --warn: #f5b458;
-    --warn-soft: #2e2210;
-    --bad: #ff8585;
-    --bad-soft: #321616;
-    --ai: #b9a1ff;
-    --ai-soft: #221a3d;
-    --on-accent: #0b0f17;
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --bg: #121110;
+    --panel: #1a1917;
+    --panel-2: #23211e;
+    --line: #34312c;
+    --ink: #f1eee7;
+    --muted: #a8a399;
+    --brand: #8b9bff;
+    --brand-ink: #f1eee7;
+    --brand-soft: #1d2142;
+    --ok: #6fd39b;
+    --ok-soft: #14281d;
+    --warn: #f0b25e;
+    --warn-soft: #2c2210;
+    --bad: #ff8d83;
+    --bad-soft: #33191a;
+    --ai: #bda8ff;
+    --ai-soft: #25203d;
+    --on-accent: #121110;
   }
 }
 
@@ -65,14 +93,24 @@
   --color-ai: var(--ai);
   --color-ai-soft: var(--ai-soft);
   --color-on-accent: var(--on-accent);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-face);
+  --font-serif: var(--font-serif-face);
+  --font-mono: var(--font-mono-face);
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
+  letter-spacing: -0.005em;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+/* Flat surfaces: a hairline border does the work, not a drop shadow. */
+.shadow-sm { box-shadow: none; }
+
+::selection { background: var(--brand-soft); color: var(--ink); }
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 @keyframes pulse-dot {
   0%, 80%, 100% { opacity: 0.25; }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentStep, PurchaseResult } from "@shared/types";
 import { api, money, statusMeta } from "./format";
+import Logo from "./Logo";
 
 type AiInfo = { label: string; model: string };
 
@@ -83,7 +84,7 @@ export default function Chat({ onActivity, kid }: { onActivity: () => void; kid?
   }
 
   return (
-    <section className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <section className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <div className="flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-lg bg-ai-soft text-ai">✦</span>
@@ -109,7 +110,7 @@ export default function Chat({ onActivity, kid }: { onActivity: () => void; kid?
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-sm text-on-accent">{m.text}</div>
+              <div className="max-w-[85%] rounded-xl rounded-br-md bg-brand px-4 py-2.5 text-sm text-on-accent">{m.text}</div>
             </div>
           ) : (
             <div key={i} className="space-y-2.5">
@@ -117,7 +118,7 @@ export default function Chat({ onActivity, kid }: { onActivity: () => void; kid?
                 <StepCard key={j} step={s} kid={!!kid} />
               ))}
               <div
-                className={`max-w-[92%] rounded-2xl rounded-bl-md border px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[92%] rounded-xl rounded-bl-md border px-4 py-3 text-sm leading-relaxed ${
                   m.error ? "border-bad/30 bg-bad-soft text-bad" : "border-line bg-panel-2"
                 }`}
               >
@@ -186,7 +187,7 @@ export default function Chat({ onActivity, kid }: { onActivity: () => void; kid?
 function EmptyState({ onPick, suggestions, kid }: { onPick: (prompt: string) => void; suggestions: typeof SUGGESTIONS; kid?: string }) {
   return (
     <div className="mx-auto max-w-md py-8 text-center">
-      <div className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-ai-soft text-xl text-ai">✦</div>
+      <div className="mx-auto mb-4 flex justify-center"><Logo size={44} /></div>
       <h3 className="text-base font-semibold">{kid ? `Hi ${kid}! What would you like?` : "What should your agent buy?"}</h3>
       <p className="mt-1.5 text-sm text-muted">
         {kid

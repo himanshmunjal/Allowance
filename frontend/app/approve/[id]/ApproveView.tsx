@@ -65,7 +65,7 @@ export default function ApproveView({ id }: { id: string }) {
           ← Back to dashboard
         </Link>
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+        <div className="mt-4 overflow-hidden rounded-xl border border-line bg-panel">
           <div className="border-b border-line bg-warn-soft px-6 py-4">
             <div className="text-xs font-medium uppercase tracking-wide text-warn">Your agent is asking permission</div>
             <div className="mt-0.5 text-sm text-ink">Review this purchase. Nothing is charged unless you approve it in PayPal.</div>
@@ -77,7 +77,7 @@ export default function ApproveView({ id }: { id: string }) {
           {tx && meta && (
             <div className="p-6">
               <div className="flex items-start gap-4">
-                <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-panel-2 text-3xl">{detail?.product?.emoji ?? "🛍️"}</div>
+                <div className="grid size-14 shrink-0 place-items-center rounded-xl bg-panel-2 text-3xl">{detail?.product?.emoji ?? "🛍️"}</div>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold">
                     {tx.quantity > 1 ? `${tx.quantity} × ` : ""}

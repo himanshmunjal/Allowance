@@ -71,7 +71,7 @@ export default function RulesPanel({ onChange }: { onChange: () => void }) {
   }
 
   return (
-    <section className="rounded-2xl border border-line bg-panel p-5 shadow-sm">
+    <section className="rounded-xl border border-line bg-panel p-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold">Your rules</h2>

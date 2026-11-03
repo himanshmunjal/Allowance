@@ -22,7 +22,7 @@ export default function Ledger({
   const label = { ledger: `Purchases (${transactions.length})`, agents: `Agents & kids (${agents.length})`, audit: "Audit trail" };
 
   return (
-    <section className="flex h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <section className="flex h-[32rem] flex-col overflow-hidden rounded-xl border border-line bg-panel">
       <div className="flex items-center justify-between border-b border-line px-5 pt-3">
         <div className="flex gap-4 whitespace-nowrap text-sm">
           {(["ledger", "agents", "audit"] as const).map((t) => (

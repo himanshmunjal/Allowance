@@ -74,7 +74,7 @@ function DemoBanner() {
 
   const link = "font-medium text-brand underline underline-offset-2";
   return (
-    <div className="mb-4 rounded-xl border border-line bg-panel px-4 py-3 text-sm shadow-sm">
+    <div className="mb-4 rounded-xl border border-line bg-panel px-4 py-3 text-sm">
       <div className="flex items-start justify-between gap-3">
         <p className="font-medium">Demo account: sandbox money only, deleted after 24 hours.</p>
         <button onClick={() => { setHidden(true); saveHidden(true); }} className="shrink-0 text-xs text-muted hover:text-ink">

@@ -6,6 +6,8 @@ import type { Agent, Transaction } from "@shared/types";
 import Chat from "./Chat";
 import { api, money, timeAgo } from "./format";
 import { AccountMenu } from "./Header";
+import Logo from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 
 // A child's home (D-061): their allowance, a shopping helper that spends from it, and their own
 // requests. No rules, wallet, approvals or refunds here: those are the parent's.
@@ -50,7 +52,7 @@ export default function KidHome({ child: initial }: { child: Agent }) {
       <header className="sticky top-0 z-10 border-b border-line bg-panel/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="grid size-9 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-on-accent">A</span>
+            <Logo />
             <div className="leading-tight">
               <div className="font-semibold">Hi, {child.name}!</div>
               <div className="text-xs text-muted">Your Allowance, set up by your parent</div>
@@ -70,8 +72,9 @@ export default function KidHome({ child: initial }: { child: Agent }) {
             </div>
           </div>
           <Link href="/store" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink">
-            🛍 Demo store
+            Demo store
           </Link>
+          <ThemeToggle />
           <AccountMenu label={`Logged in as ${child.loginName ?? child.name}`} />
         </div>
       </header>
@@ -104,7 +107,7 @@ function MyRules({ child }: { child: Agent }) {
     "Never allowed: alcohol, vaping, gambling, weapons or adult things",
   ].filter(Boolean);
   return (
-    <section className="rounded-2xl border border-line bg-panel p-4 shadow-sm">
+    <section className="rounded-xl border border-line bg-panel p-4">
       <h2 className="text-sm font-semibold">My rules</h2>
       <ul className="mt-2 space-y-1 text-xs text-muted">
         {rules.map((r) => (
@@ -132,7 +135,7 @@ function MyRequests({ transactions, onChange }: { transactions: Transaction[]; o
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel">
       <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">My purchases ({transactions.length})</h2>
       <div className="flex-1 divide-y divide-line overflow-y-auto">
         {transactions.length === 0 && <p className="p-4 text-xs text-muted">Nothing yet. Ask your shopping helper for something!</p>}

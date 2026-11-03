@@ -82,7 +82,7 @@ export default function LabView() {
       {error && <p className="mt-3 rounded-lg bg-bad-soft px-3 py-2 text-xs text-bad">{error}</p>}
 
       {visible.length > 0 && (
-        <ol className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+        <ol className="mt-6 divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
           {visible.map((r) => (
             <AttackRow key={r.id} result={r} />
           ))}

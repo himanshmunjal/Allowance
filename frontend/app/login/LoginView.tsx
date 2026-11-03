@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { api } from "@/app/components/format";
 import { TryDemoButton } from "@/app/components/Landing";
+import { Wordmark } from "../components/Logo";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function LoginView() {
   const router = useRouter();
@@ -34,15 +36,12 @@ export default function LoginView() {
   return (
     <div className="grid min-h-dvh place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-2.5">
-          <span className="grid size-10 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-on-accent">A</span>
-          <div className="leading-tight">
-            <div className="text-lg font-semibold">Allowance</div>
-            <div className="text-xs text-muted">AI agents pay with PayPal, within your rules</div>
-          </div>
+        <div className="mb-8 flex items-center justify-between">
+          <Wordmark sub="AI agents pay with PayPal, within your rules" />
+          <ThemeToggle />
         </div>
 
-        <form onSubmit={submit} className="rounded-2xl border border-line bg-panel p-6 shadow-sm">
+        <form onSubmit={submit} className="rounded-xl border border-line bg-panel p-6">
           <h1 className="text-base font-semibold">{mode === "login" ? "Log in" : "Create your account"}</h1>
           <p className="mt-1 text-xs text-muted">
             {mode === "login"
