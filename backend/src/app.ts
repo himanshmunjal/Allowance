@@ -7,6 +7,9 @@ import { agentAdminRoutes } from "./routes/agents";
 import { authRoutes } from "./routes/auth";
 import { approvalRoutes } from "./routes/approvals";
 import { chatRoutes } from "./routes/chat";
+import { demoRoutes } from "./routes/demo";
+import { kidRoutes } from "./routes/kid";
+import { labRoutes } from "./routes/lab";
 import { ledgerRoutes } from "./routes/ledger";
 import { mcpRoutes } from "./mcp/http";
 import { merchantRoutes } from "./routes/merchant";
@@ -31,6 +34,9 @@ app.route("/api", metaRoutes); // /api/catalog, /api/ai
 app.route("/api/auth", authRoutes);
 app.route("/api/agents", agentAdminRoutes); // manage your agents (session)
 app.route("/api/chat", chatRoutes);
+app.route("/api/demo", demoRoutes); // one-click demo accounts (public)
+app.route("/api/lab", labRoutes); // the Attack Lab (session)
+app.route("/api/kid", kidRoutes); // a child's own view (child session)
 app.route("/api/policy", policyRoutes);
 app.route("/api/transactions", ledgerRoutes);
 app.route("/api/approvals", approvalRoutes);

@@ -165,6 +165,15 @@ async function migrate(p: pg.Pool) {
       id TEXT PRIMARY KEY,
       received_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- Parental controls (D-061): a child is an agent with its own login; a child's session points at it.
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS login_name TEXT UNIQUE;
+    ALTER TABLE agents ADD COLUMN IF NOT EXISTS password_hash TEXT;
+    ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE;
+    -- The rule category of a purchase, for the explorer and rule advisor (D-066, D-068).
+    ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category TEXT;
+    -- One-click demo accounts, deleted after a day (D-067). Lab accounts are deleted right after a run (D-065).
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false;
+    CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions(status, created_at);
   `);
 }
 
@@ -186,6 +195,7 @@ type TxRow = {
   merchant_name: string;
   product_id: string;
   title: string;
+  category: string | null;
   quantity: number;
   unit_price: number;
   amount: number;
@@ -215,6 +225,7 @@ function toTransaction(r: TxRow): Transaction {
     merchantName: r.merchant_name,
     productId: r.product_id,
     title: r.title,
+    category: r.category,
     quantity: r.quantity,
     unitPrice: r.unit_price,
     amount: r.amount,
@@ -241,13 +252,13 @@ export type NewTransaction = Omit<
 export async function insertTransaction(tx: NewTransaction, on?: Queryable): Promise<Transaction> {
   const row = await queryOne<TxRow>(
     `INSERT INTO transactions (id, user_id, agent_id, agent_name, source, status, merchant_id, merchant_name, product_id,
-       title, quantity, unit_price, amount, currency, user_intent, agent_reason, decision_reasons, risk_level, risk_reason, checks)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+       title, quantity, unit_price, amount, currency, user_intent, agent_reason, decision_reasons, risk_level, risk_reason, checks, category)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
      RETURNING *`,
     [
       newId("tx"), tx.userId, tx.agentId, tx.agentName, tx.source, tx.status, tx.merchantId, tx.merchantName, tx.productId,
       tx.title, tx.quantity, tx.unitPrice, tx.amount, tx.currency, tx.userIntent, tx.agentReason, jsonb(tx.decisionReasons),
-      tx.riskLevel, tx.riskReason, jsonb(tx.checks),
+      tx.riskLevel, tx.riskReason, jsonb(tx.checks), tx.category,
     ],
     on,
   );

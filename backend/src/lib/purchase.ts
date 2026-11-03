@@ -1,13 +1,15 @@
 import { resolveProduct, type Product } from "./catalog";
 import { Channel3Error } from "./channel3";
 import { config } from "./config";
-import { audit, getTransaction, insertTransaction, updateTransaction, withTransaction, type NewTransaction } from "./db";
+import { audit, getTransaction, insertTransaction, query, updateTransaction, withTransaction, type NewTransaction } from "./db";
 import * as paypal from "./paypal";
 import { evaluatePolicy, getPolicy, spendSummary, stricter, type StepResult, type Verdict } from "./policy";
 import { detectInjection } from "./injection";
+import { checkChildSafety } from "./child-safety";
 import { assessRisk, type RiskAssessment } from "./risk";
 import { getAgent, type AgentContext } from "./agents";
 import type { DecisionCheck, PurchaseResult, Transaction, TxSource } from "../shared/types";
+import { effectiveAutoLimit, evaluateVelocity, recentPurchases } from "./velocity";
 import { getVaultId, setWalletConnected } from "./wallet";
 
 // THE purchase pipeline. Every spend, from the chat agent or from an MCP client, goes through
@@ -25,9 +27,18 @@ export type PurchaseRequest = {
   source: TxSource;
 };
 
+/**
+ * Internal only, for the Attack Lab (D-065): no route or MCP tool passes this. It swaps the AI
+ * reviewer and skips PayPal; every rule, lock and check still runs for real.
+ */
+export type PipelineOptions = {
+  simulatePayment?: boolean;
+  assessRisk?: typeof assessRisk;
+};
+
 const MAX_QUANTITY = 20;
 
-export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseResult> {
+export async function requestPurchase(req: PurchaseRequest, opts: PipelineOptions = {}): Promise<PurchaseResult> {
   const { userId } = req.agent;
 
   // 1. Resolve the product server-side. The agent supplies an id; price comes from the catalog
@@ -64,8 +75,25 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
     ...(rules.agent ? [stepCheck("agent", `${req.agent.name}'s allowance`, rules.agent)] : []),
   ];
 
-  // Free, deterministic prompt-injection screen of the listing (D-035): works on any model.
-  const injection = detectInjection(product.description);
+  // Parental controls (D-061): a child can never buy age-restricted goods, whatever the rules say.
+  const child = req.agent.kind === "child";
+  if (child) {
+    const safety = checkChildSafety(product);
+    if (safety.blocked) {
+      rules.verdict = "BLOCK";
+      rules.reasons.unshift(`Not allowed for kids: this looks like ${safety.found.join(" / ")}`);
+    }
+    checks.push({
+      step: "child",
+      label: "Kid-safe check",
+      outcome: safety.blocked ? "block" : "pass",
+      detail: safety.blocked ? `Age-restricted: ${safety.found.join(", ")}. Always blocked for children` : "Nothing age-restricted (alcohol, vaping, gambling, weapons, adult)",
+    });
+  }
+
+  // Free, deterministic prompt-injection screen of the listing (D-035): works on any model. Every
+  // seller-written field the agent reads is screened, not only the description (D-063).
+  const injection = detectInjection(product.name, product.description, merchant.name);
   if (injection.flagged) {
     rules.verdict = "BLOCK";
     rules.reasons.unshift(`Listing looks like a prompt injection: it ${injection.reasons.join(", ")}`);
@@ -86,6 +114,7 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
     merchantName: merchant.name,
     productId: product.id,
     title: product.name,
+    category: product.category,
     quantity,
     unitPrice: product.price,
     amount,
@@ -105,23 +134,45 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
   }
 
   let verdict: Verdict = rules.verdict;
+  // The reason a purchase was held always comes first: it is the line people and agents read. The
+  // checks it passed ("fits the budget") follow it.
   const reasons = [...rules.reasons];
 
   // 4. No vaulted wallet means the agent can't pay on its own: a human has to approve.
   const vaultId = await getVaultId(userId);
   if (verdict === "ALLOW" && !vaultId) {
     verdict = "NEEDS_APPROVAL";
-    reasons.push("No PayPal wallet connected for auto-pay, so this needs your approval");
+    reasons.unshift("No PayPal wallet connected for auto-pay, so this needs your approval");
     checks.push({ step: "wallet", label: "Saved PayPal", outcome: "ask", detail: "No saved PayPal for auto-pay, so you approve in PayPal" });
   } else if (verdict === "ALLOW") {
     checks.push({ step: "wallet", label: "Saved PayPal", outcome: "pass", detail: "Your saved PayPal is ready for auto-pay" });
   }
 
+  // Retries, split purchases and bursts (D-064). Checked again under the lock below; this first
+  // pass just avoids spending an AI call on something a human will review anyway.
+  const velocityReasons = async (autoLimit: number, on?: Parameters<typeof recentPurchases>[1]) =>
+    evaluateVelocity(
+      await recentPurchases(req.agent.id, on),
+      { productId: product.id, merchantId: merchant.id, merchantName: merchant.name, title: product.name, amount },
+      autoLimit,
+    );
+  const velocity = await velocityReasons(effectiveAutoLimit(policy, req.agent));
+  if (velocity.length) {
+    verdict = stricter(verdict, "NEEDS_APPROVAL");
+    reasons.unshift(...velocity);
+  }
+  checks.push({
+    step: "velocity",
+    label: "Retry & split check",
+    outcome: velocity.length ? "ask" : "pass",
+    detail: velocity.length ? velocity.join("; ") : "Not a repeat, and no pattern of small purchases adding up",
+  });
+
   // 5. AI intent / risk check: can only make the verdict stricter. In "autopay" mode it only runs
   // when money would move without a human, saving free-tier AI quota (D-036).
   let risk: RiskAssessment | null = null;
   if (verdict === "ALLOW" || config.riskCheck() === "always") {
-    risk = await assessRisk({
+    risk = await (opts.assessRisk ?? assessRisk)({
       userIntent: req.userIntent,
       agentReason: req.agentReason,
       title: product.name,
@@ -138,8 +189,12 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
       verdict = "BLOCK";
       reasons.unshift(`AI risk check: ${risk.reason}`);
     } else {
-      if (risk.level === "medium") verdict = stricter(verdict, "NEEDS_APPROVAL");
-      reasons.push(`AI risk check (${risk.level}): ${risk.reason}`);
+      if (risk.level === "medium") {
+        verdict = stricter(verdict, "NEEDS_APPROVAL");
+        reasons.unshift(`AI risk check (${risk.level}): ${risk.reason}`);
+      } else {
+        reasons.push(`AI risk check (${risk.level}): ${risk.reason}`);
+      }
     }
     checks.push({
       step: "risk",
@@ -158,24 +213,33 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
   const tx = await withTransaction(async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
     if (verdict !== "BLOCK") {
+      // Fresh rules, allowance and history: any of them may have changed during the (slow) AI check,
+      // and a change must apply whichever way it goes. All on this client: the lock can queue every
+      // pooled connection, so asking the pool for another one here could deadlock.
+      const { policy: policyNow } = await getPolicy(userId, client);
       const agentNow = (await getAgent(userId, req.agent.id, client)) ?? req.agent;
-      const recheck = evaluatePolicy(policy, await spendSummary(userId, policy, client), { product, merchant, amount }, agentNow);
+      const recheck = evaluatePolicy(policyNow, await spendSummary(userId, policyNow, client), { product, merchant, amount }, agentNow);
+      const velocityNow = verdict === "ALLOW" ? await velocityReasons(effectiveAutoLimit(policyNow, agentNow), client) : [];
+      const asks = [...(recheck.verdict === "NEEDS_APPROVAL" ? recheck.reasons : []), ...velocityNow];
       if (recheck.verdict === "BLOCK") {
         verdict = "BLOCK";
         reasons.splice(0, reasons.length, ...recheck.reasons);
+      } else if (asks.length && verdict === "ALLOW") {
+        verdict = "NEEDS_APPROVAL";
+        reasons.unshift(...asks);
       }
       checks.push({
         step: "recheck",
-        label: "Final budget check",
-        outcome: recheck.verdict === "BLOCK" ? "block" : "pass",
-        detail: recheck.verdict === "BLOCK" ? recheck.reasons.join("; ") : "Budgets re-checked at the moment of the decision (no double-spending)",
+        label: "Final check",
+        outcome: recheck.verdict === "BLOCK" ? "block" : asks.length ? "ask" : "pass",
+        detail: recheck.verdict === "BLOCK" ? recheck.reasons.join("; ") : asks.length ? asks.join("; ") : "Rules, budgets and recent purchases re-read at the moment of the decision (no double-spending)",
       });
     }
     checks.push({
       step: "decision",
       label: "Decision",
       outcome: verdict === "BLOCK" ? "block" : verdict === "NEEDS_APPROVAL" ? "ask" : "pass",
-      detail: verdict === "BLOCK" ? "Blocked: nothing was paid" : verdict === "NEEDS_APPROVAL" ? "Waiting for your approval in PayPal" : "Approved for auto-pay",
+      detail: verdict === "BLOCK" ? "Blocked: nothing was paid" : verdict === "NEEDS_APPROVAL" ? (child ? "Waiting for a parent to approve in PayPal" : "Waiting for your approval in PayPal") : "Approved for auto-pay",
     });
     // PROCESSING reserves the budget while the PayPal capture below is in flight.
     const status = verdict === "BLOCK" ? "BLOCKED" : verdict === "NEEDS_APPROVAL" ? "PENDING_APPROVAL" : "PROCESSING";
@@ -191,9 +255,15 @@ export async function requestPurchase(req: PurchaseRequest): Promise<PurchaseRes
     return result(tx);
   }
 
+  // The Attack Lab's account never reaches PayPal (D-065).
+  if (opts.simulatePayment) return result(await updateTransaction(tx.id, { status: "PAID" }));
+
   // 7. Auto-pay with this user's vaulted PayPal wallet.
   return result(await autoPay(tx, vaultId!));
 }
+
+/** A definite "no" from PayPal: distinct from errors where we can't tell whether money moved. */
+class PaymentDeclined extends Error {}
 
 async function autoPay(tx: Transaction, vaultId: string): Promise<Transaction> {
   try {
@@ -203,7 +273,7 @@ async function autoPay(tx: Transaction, vaultId: string): Promise<Transaction> {
     }
     const capture = paypal.firstCapture(order);
     if (order.status !== "COMPLETED" || !capture || capture.status === "DECLINED" || capture.status === "FAILED") {
-      throw new Error(`PayPal returned order status ${order.status}${capture ? ` / capture ${capture.status}` : ""}`);
+      throw new PaymentDeclined(`PayPal returned order status ${order.status}${capture ? ` / capture ${capture.status}` : ""}`);
     }
     const paid = await updateTransaction(tx.id, { status: "PAID", paypalOrderId: order.id, paypalCaptureId: capture.id });
     await audit(tx.userId, "PAYPAL_CAPTURED", `Auto-paid ${fmt(tx.amount)} to ${tx.merchantName} for ${tx.agentName} with your saved PayPal`, tx.id, {
@@ -213,8 +283,40 @@ async function autoPay(tx: Transaction, vaultId: string): Promise<Transaction> {
     });
     return paid;
   } catch (err) {
+    // Timeout, network error or 5xx: the payment may have gone through, so don't call it failed.
+    // It stays PROCESSING (still reserving budget) until recoverStuckPayments settles it (D-062).
+    if (!(err instanceof PaymentDeclined) && paypal.outcomeUnknown(err)) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[purchase] ${tx.id} outcome unknown`, message);
+      await audit(tx.userId, "PAYPAL_UNCONFIRMED", `Couldn't confirm the ${fmt(tx.amount)} payment yet (${message}). Checking again shortly.`, tx.id);
+      return tx;
+    }
     return markFailed(tx, err);
   }
+}
+
+// PayPal keeps a PayPal-Request-Id for hours, so re-sending the same create and capture returns the
+// original order rather than charging again. Stop well inside that window: past it a retry could
+// charge twice, so an older payment is left for a person to look at.
+const RECOVER_AFTER = "2 minutes";
+const RECOVER_UNTIL = "3 hours";
+
+/** Settles auto-payments left PROCESSING by an unknown outcome or a crash. Run periodically. */
+export async function recoverStuckPayments(): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `SELECT id FROM transactions WHERE status = 'PROCESSING' AND source <> 'lab'
+       AND created_at < now() - $1::interval AND created_at > now() - $2::interval LIMIT 20`,
+    [RECOVER_AFTER, RECOVER_UNTIL],
+  );
+  let settled = 0;
+  for (const { id } of rows) {
+    const tx = await getTransaction(id);
+    const vaultId = tx && (await getVaultId(tx.userId));
+    if (!tx || !vaultId) continue;
+    const after = await autoPay(tx, vaultId);
+    if (after.status !== "PROCESSING") settled++;
+  }
+  return settled;
 }
 
 // ---------- human approval path (used by /api/approvals/*; always the logged-in owner) ----------
@@ -245,7 +347,7 @@ export async function captureApprovedOrder(userId: string, txId: string, orderId
   try {
     const order = await paypal.captureOrder(orderId, `${tx.id}-capture-${orderId}`);
     const capture = paypal.firstCapture(order);
-    if (order.status !== "COMPLETED" || !capture) throw new Error(`PayPal returned order status ${order.status}`);
+    if (order.status !== "COMPLETED" || !capture) throw new PaymentDeclined(`PayPal returned order status ${order.status}`);
     const paid = await updateTransaction(tx.id, {
       status: "PAID",
       paypalCaptureId: capture.id,
@@ -266,9 +368,14 @@ export async function captureApprovedOrder(userId: string, txId: string, orderId
     }
     return paid;
   } catch (err) {
-    // Keep it pending if the buyer can retry (e.g. instrument declined), otherwise fail.
+    // Keep it pending if the buyer can retry (e.g. instrument declined), otherwise fail. An unknown
+    // outcome (D-062) is retryable too: capture carries a request id, so it can't charge twice.
     if (err instanceof paypal.PayPalError && err.status === 422) {
       await audit(userId, "PAYPAL_ERROR", `Capture failed: ${err.message}. You can try again.`, tx.id, { debugId: err.debugId });
+      throw err;
+    }
+    if (!(err instanceof PaymentDeclined) && paypal.outcomeUnknown(err)) {
+      await audit(userId, "PAYPAL_UNCONFIRMED", `Couldn't confirm this capture (${(err as Error).message}). Try again: it can't charge twice.`, tx.id);
       throw err;
     }
     return markFailed(tx, err);

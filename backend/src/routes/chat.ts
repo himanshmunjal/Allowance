@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUser, type AppEnv } from "../http";
+import { requireMember, type AppEnv } from "../http";
 import { runAgentTurn } from "../lib/agent";
 
 const Body = z.object({
@@ -9,8 +9,8 @@ const Body = z.object({
 });
 
 export const chatRoutes = new Hono<AppEnv>()
-  .use("*", requireUser)
-  // POST /api/chat: run one turn of the user's built-in chat agent.
+  .use("*", requireMember)
+  // POST /api/chat: one turn of the chat agent: the user's built-in agent, or for a child, shopping as that child (D-061).
   .post("/", async (c) => {
     const { conversationId, message } = Body.parse(await c.req.json());
     return c.json(await runAgentTurn(c.var.agent, conversationId, message));

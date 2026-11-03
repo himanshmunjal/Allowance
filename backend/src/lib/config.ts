@@ -64,6 +64,15 @@ export const config = {
   channel3: { apiKey: () => optional("CHANNEL3_API_KEY") },
   catalogSource: (): "channel3" | "demo" => (optional("CATALOG_SOURCE", "channel3") === "demo" ? "demo" : "channel3"),
 
+  // One-click demo accounts (D-067). DEMO_MODE: unset = on, but only against the PayPal sandbox;
+  // "off" disables; "on" also allows a non-sandbox PayPal base (a local mock, in tests).
+  demo: {
+    enabled: () => optional("DEMO_MODE", "auto"),
+    /** A sandbox vault id every demo account pays with, so judges see auto-pay without a PayPal login. */
+    vaultId: () => optional("DEMO_VAULT_ID"),
+    payerEmail: () => optional("DEMO_PAYER_EMAIL"),
+  },
+
   /**
    * Optional. On the first sign-up, this key becomes that account's first external agent so the
    * MCP server and scripts (which send it) work without reconfiguring (D-054).

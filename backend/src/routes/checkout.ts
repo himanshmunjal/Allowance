@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUser, type AppEnv } from "../http";
+import { requireMember, type AppEnv } from "../http";
 import { getAgent, listAgents, publicAgent } from "../lib/agents";
 import { getOwnTransaction, PurchaseInputError, requestPurchase } from "../lib/purchase";
 import { resolveQuote } from "../lib/quotes";
@@ -16,16 +16,16 @@ const Pay = z.object({
 });
 
 export const checkoutRoutes = new Hono<AppEnv>()
-  .use("*", requireUser)
+  .use("*", requireMember) // a child can check out too, but only as themselves (D-061)
   .get("/:quoteId", async (c) => {
     const quote = await resolveQuote(c.req.param("quoteId"));
     if (!quote) return c.json({ error: "This checkout has expired or doesn't exist. Go back to the store and try again." }, 404);
-    const agents = (await listAgents(c.var.user.id)).map(publicAgent);
+    const agents = c.var.role === "child" ? [publicAgent(c.var.agent)] : (await listAgents(c.var.user.id)).map(publicAgent);
     return c.json({ product: quote.product, merchant: quote.merchant, agents });
   })
   .post("/:quoteId", async (c) => {
     const body = Pay.parse(await c.req.json());
-    const agent = await getAgent(c.var.user.id, body.agentId);
+    const agent = c.var.role === "child" ? c.var.agent : await getAgent(c.var.user.id, body.agentId);
     if (!agent || agent.status === "revoked") throw new PurchaseInputError("Pick one of your agents.");
     const result = await requestPurchase({
       agent,

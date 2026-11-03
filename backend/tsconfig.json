@@ -12,5 +12,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "mcp", "scripts", "tsup.config.ts"]
+  "include": ["src", "mcp", "scripts", "test", "tsup.config.ts"]
 }

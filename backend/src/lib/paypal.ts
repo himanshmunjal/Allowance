@@ -41,7 +41,18 @@ async function accessToken(): Promise<string> {
   return cachedToken.value;
 }
 
-async function call<T>(method: string, path: string, opts: { body?: unknown; requestId?: string } = {}): Promise<T> {
+const TIMEOUT_MS = 20_000;
+const RETRY_DELAYS_MS = [400, 1200];
+
+/**
+ * True when we can't know whether PayPal acted: a network failure, timeout or 5xx (D-062). The money
+ * may have moved, so never tell anyone "nothing was charged" on this; retry with the same request id.
+ */
+export function outcomeUnknown(err: unknown): boolean {
+  return !(err instanceof PayPalError) || err.status >= 500;
+}
+
+async function callOnce<T>(method: string, path: string, opts: { body?: unknown; rawBody?: string; requestId?: string }): Promise<T> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${await accessToken()}`,
     "Content-Type": "application/json",
@@ -52,16 +63,37 @@ async function call<T>(method: string, path: string, opts: { body?: unknown; req
   const res = await fetch(`${config.paypal.apiBase()}${path}`, {
     method,
     headers,
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    body: opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await res.text();
-  const json = text ? JSON.parse(text) : {};
+  let json: Record<string, any> = {}; // a gateway error can be HTML: don't let JSON.parse hide the status
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    if (res.ok) throw new PayPalError(`PayPal ${method} ${path} returned invalid JSON`, 502, "INVALID_RESPONSE", res.headers.get("paypal-debug-id"), null);
+  }
   if (!res.ok) {
     const issue = json?.details?.[0];
-    const message = issue ? `${issue.issue}: ${issue.description}` : json?.message ?? `PayPal ${method} ${path} failed`;
+    const message = issue ? `${issue.issue}: ${issue.description}` : json?.message ?? `PayPal ${method} ${path} failed (${res.status})`;
     throw new PayPalError(message, res.status, json?.name ?? "PAYPAL_ERROR", json?.debug_id ?? res.headers.get("paypal-debug-id"), json?.details);
   }
   return json as T;
+}
+
+/** Retries only what is safe to repeat: reads, and writes carrying a PayPal-Request-Id (idempotent at PayPal). */
+async function call<T>(method: string, path: string, opts: { body?: unknown; rawBody?: string; requestId?: string } = {}): Promise<T> {
+  const retryable = method === "GET" || Boolean(opts.requestId);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callOnce<T>(method, path, opts);
+    } catch (err) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (!retryable || !outcomeUnknown(err) || delay === undefined) throw err;
+      console.warn(`[paypal] ${method} ${path} attempt ${attempt + 1} failed (${(err as Error).message}); retrying`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
 }
 
 const money = (value: number, currency: string): Money => ({ currency_code: currency, value: value.toFixed(2) });
@@ -179,6 +211,14 @@ export function firstCapture(order: Order) {
   return order.purchase_units?.[0]?.payments?.captures?.[0] ?? null;
 }
 
+// ---------- Payments: read a capture back (ledger reconciliation, D-066) ----------
+
+export type Capture = { id: string; status: string; amount: Money; custom_id?: string };
+
+export function getCapture(captureId: string) {
+  return call<Capture>("GET", `/v2/payments/captures/${captureId}`);
+}
+
 // ---------- Payments: refunds ----------
 
 export function refundCapture(captureId: string, amount: number, currency: string, txId: string) {
@@ -237,19 +277,23 @@ export function deletePaymentToken(id: string) {
 
 // ---------- Webhooks ----------
 
-export async function verifyWebhook(headers: Headers, event: unknown): Promise<boolean> {
+/**
+ * `rawEvent` is the request body exactly as received. PayPal checks its signature against those
+ * bytes, so re-serializing a parsed event can make a genuine webhook fail verification (D-062).
+ */
+export async function verifyWebhook(headers: Headers, rawEvent: string): Promise<boolean> {
   const webhookId = config.paypal.webhookId();
   if (!webhookId) return false;
+  const envelope = JSON.stringify({
+    auth_algo: headers.get("paypal-auth-algo"),
+    cert_url: headers.get("paypal-cert-url"),
+    transmission_id: headers.get("paypal-transmission-id"),
+    transmission_sig: headers.get("paypal-transmission-sig"),
+    transmission_time: headers.get("paypal-transmission-time"),
+    webhook_id: webhookId,
+  });
   const res = await call<{ verification_status: string }>("POST", "/v1/notifications/verify-webhook-signature", {
-    body: {
-      auth_algo: headers.get("paypal-auth-algo"),
-      cert_url: headers.get("paypal-cert-url"),
-      transmission_id: headers.get("paypal-transmission-id"),
-      transmission_sig: headers.get("paypal-transmission-sig"),
-      transmission_time: headers.get("paypal-transmission-time"),
-      webhook_id: webhookId,
-      webhook_event: event,
-    },
+    rawBody: `${envelope.slice(0, -1)},"webhook_event":${rawEvent}}`,
   });
   return res.verification_status === "SUCCESS";
 }

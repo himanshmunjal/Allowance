@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireUser, type AppEnv } from "../http";
 import { config } from "../lib/config";
-import { AgentLimits, createAgent, listAgents, publicAgent, revokeAgent, updateAgent } from "../lib/agents";
+import { AgentLimits, AgentPatch, ChildInput, ChildPassword, createAgent, createChild, listAgents, publicAgent, revokeAgent, updateAgent } from "../lib/agents";
 
 // Dashboard API for managing your agents and their allowances (D-054). Logged-in users only.
 
-const Patch = AgentLimits.partial().extend({ status: z.enum(["active", "paused"]).optional() });
+const Patch = AgentPatch.extend({ status: z.enum(["active", "paused"]).optional(), password: ChildPassword.optional() });
 
 export const agentAdminRoutes = new Hono<AppEnv>()
   .use("*", requireUser)
@@ -18,6 +18,8 @@ export const agentAdminRoutes = new Hono<AppEnv>()
     const { agent, apiKey } = await createAgent(c.var.user.id, AgentLimits.parse(await c.req.json()));
     return c.json({ agent: publicAgent(agent), apiKey }, 201);
   })
+  // Parental controls (D-061): add a child with a username + password and their own allowance.
+  .post("/children", async (c) => c.json({ agent: publicAgent(await createChild(c.var.user.id, ChildInput.parse(await c.req.json()))) }, 201))
   .patch("/:id", async (c) => {
     const agent = await updateAgent(c.var.user.id, c.req.param("id"), Patch.parse(await c.req.json()));
     return agent ? c.json({ agent: publicAgent(agent) }) : c.json({ error: "Agent not found" }, 404);

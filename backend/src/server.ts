@@ -4,6 +4,7 @@ import { config } from "./lib/config";
 import { describeProviders } from "./lib/llm";
 import { catalogSource } from "./lib/catalog";
 import { ensureDatabase } from "./lib/db";
+import { recoverStuckPayments } from "./lib/purchase";
 
 const port = Number(process.env.PORT ?? 4000);
 
@@ -15,6 +16,12 @@ try {
   console.error("   Set DATABASE_URL in backend/.env, e.g. postgres://postgres:<password>@localhost:5432/allowance\n");
   process.exit(1);
 }
+
+// Settle payments whose outcome was unknown (D-062). One failed sweep just waits for the next.
+const RECOVER_EVERY_MS = 60_000;
+setInterval(() => {
+  recoverStuckPayments().catch((err) => console.error("[recover] sweep failed", err));
+}, RECOVER_EVERY_MS).unref();
 
 serve({ fetch: app.fetch, port }, (info) => {
   const ai = describeProviders();

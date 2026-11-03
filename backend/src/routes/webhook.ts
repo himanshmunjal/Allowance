@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { audit, findTransactionBy, getTransaction, query, updateTransaction } from "../lib/db";
+import { audit, findTransactionBy, getTransaction, query, queryOne, updateTransaction } from "../lib/db";
 import { verifyWebhook } from "../lib/paypal";
+import { setWalletDisconnected } from "../lib/wallet";
 
 // PayPal webhooks: signature-verified (D-023), de-duplicated, idempotent. A bonus, not a
 // dependency: state is already updated from API responses (D-012).
@@ -9,20 +10,27 @@ type WebhookEvent = {
   id: string;
   event_type: string;
   summary?: string;
-  resource: { id: string; status?: string; custom_id?: string; links?: { href: string; rel: string }[] };
+  resource: {
+    id: string;
+    status?: string;
+    custom_id?: string;
+    links?: { href: string; rel: string }[];
+    disputed_transactions?: { seller_transaction_id?: string }[];
+  };
 };
 
 export const webhookRoutes = new Hono().post("/", async (c) => {
+  const raw = await c.req.text();
   let event: WebhookEvent;
   try {
-    event = JSON.parse(await c.req.text());
+    event = JSON.parse(raw);
   } catch {
     return c.json({ error: "invalid JSON" }, 400);
   }
 
   let verified = false;
   try {
-    verified = await verifyWebhook(c.req.raw.headers, event);
+    verified = await verifyWebhook(c.req.raw.headers, raw);
   } catch (err) {
     console.error("[webhook] verification call failed", err);
   }
@@ -54,6 +62,25 @@ export const webhookRoutes = new Hono().post("/", async (c) => {
       const tx = captureId ? await findTransactionBy("paypal_capture_id", captureId) : null;
       if (tx && tx.status === "PAID") await updateTransaction(tx.id, { status: "REFUNDED", paypalRefundId: r.id });
       await audit(tx?.userId ?? null, "WEBHOOK", `PayPal confirmed refund ${r.id}`, tx?.id ?? null, { eventId: event.id });
+      break;
+    }
+    // The buyer removed Allowance from their PayPal settings: consent is gone, so auto-pay stops now (D-062).
+    case "VAULT.PAYMENT-TOKEN.DELETED": {
+      const wallet = await queryOne<{ user_id: string }>("SELECT user_id FROM wallets WHERE payment_token_id = $1", [r.id]);
+      if (wallet) {
+        await setWalletDisconnected(wallet.user_id);
+        await audit(wallet.user_id, "WALLET_DISCONNECTED", "You removed Allowance in PayPal: auto-pay is off", null, { eventId: event.id });
+      }
+      break;
+    }
+    // A dispute on an agent's purchase is a signal that agent can't be trusted right now: pause it (D-062).
+    case "CUSTOMER.DISPUTE.CREATED": {
+      const captureId = r.disputed_transactions?.[0]?.seller_transaction_id;
+      const tx = captureId ? await findTransactionBy("paypal_capture_id", captureId) : null;
+      if (tx?.agentId) {
+        await query("UPDATE agents SET status = 'paused' WHERE id = $1 AND user_id = $2 AND kind <> 'builtin' AND status = 'active'", [tx.agentId, tx.userId]);
+      }
+      await audit(tx?.userId ?? null, "WEBHOOK", `Dispute ${r.id} opened on ${tx ? `"${tx.title}"; ${tx.agentName ?? "the agent"} is paused until you review it` : `capture ${captureId ?? "unknown"}`}`, tx?.id ?? null, { eventId: event.id });
       break;
     }
     default:

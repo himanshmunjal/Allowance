@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 
-// Bundles src/ into dist/server.js; npm dependencies (incl. the native better-sqlite3) stay external.
+// Bundles src/ into dist/server.js; npm dependencies stay external.
 export default defineConfig({
   entry: ["src/server.ts"],
   format: ["esm"],

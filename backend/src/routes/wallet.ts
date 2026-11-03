@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { requireUser, type AppEnv } from "../http";
 import { config } from "../lib/config";
 import { audit, newId } from "../lib/db";
+import { isSharedDemoVault } from "../lib/demo";
 import { createPaymentToken, createSetupToken, deletePaymentToken, PayPalError } from "../lib/paypal";
 import { getPendingSetupToken, getVaultId, getWallet, setWalletConnected, setWalletDisconnected, setWalletPending } from "../lib/wallet";
 
@@ -63,7 +64,7 @@ export const walletRoutes = new Hono<AppEnv>()
 
   .delete("/", async (c) => {
     const vaultId = await getVaultId(c.var.user.id);
-    if (vaultId) {
+    if (vaultId && !isSharedDemoVault(vaultId)) {
       // Best effort: revoke the token at PayPal too, but always disconnect locally.
       await deletePaymentToken(vaultId).catch((err) => console.warn("[wallet] could not delete payment token", err?.message));
     }

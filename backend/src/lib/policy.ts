@@ -39,10 +39,11 @@ export const DEFAULT_POLICY_TEXT =
   "Spend at most $150 a week. Pay automatically for anything up to $25, ask me above that, and never spend more than $100 on one thing. Always ask before buying electronics. Never buy gambling credits and never buy from unverified sellers.";
 
 /** The user's rules (D-053); new accounts start with the defaults. */
-export async function getPolicy(userId: string): Promise<{ policy: Policy; sourceText: string }> {
+export async function getPolicy(userId: string, on?: Queryable): Promise<{ policy: Policy; sourceText: string }> {
   const row = await queryOne<{ policy: unknown; source_text: string | null }>(
     "SELECT policy, source_text FROM policies WHERE user_id = $1",
     [userId],
+    on,
   );
   if (!row) return { policy: DEFAULT_POLICY, sourceText: DEFAULT_POLICY_TEXT };
   // Rules saved before a field existed get its default (e.g. categoryAskAbove, D-056).

@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
@@ -6,12 +6,12 @@ import { config, ConfigError } from "./lib/config";
 import { LlmError } from "./lib/llm";
 import { PayPalError } from "./lib/paypal";
 import { PurchaseInputError } from "./lib/purchase";
-import { AuthError, userForSession } from "./lib/auth";
-import { agentForKey, ensureBuiltinAgent, type AgentContext } from "./lib/agents";
+import { AuthError, sessionFor } from "./lib/auth";
+import { AgentInputError, agentForKey, ensureBuiltinAgent, getAgent, type AgentContext } from "./lib/agents";
 import type { User } from "./shared/types";
 
 /** Hono context variables set by the auth middlewares below. */
-export type AppEnv = { Variables: { user: User; agent: AgentContext } };
+export type AppEnv = { Variables: { user: User; agent: AgentContext; role: "owner" | "child" } };
 
 export const SESSION_COOKIE = "allowance_session";
 
@@ -24,7 +24,7 @@ export function errorResponse(err: unknown): Response {
   if (err instanceof z.ZodError) {
     return Response.json({ error: "Invalid request", details: err.issues }, { status: 400 });
   }
-  if (err instanceof AuthError) {
+  if (err instanceof AuthError || err instanceof AgentInputError) {
     return Response.json({ error: err.message }, { status: err.status });
   }
   if (err instanceof PurchaseInputError) {
@@ -57,12 +57,38 @@ export function errorResponse(err: unknown): Response {
   return Response.json({ error: "Something went wrong" }, { status: 500 });
 }
 
-/** Logged-in user from the session cookie (D-053). Sets c.var.user, and c.var.agent = their built-in chat agent. */
+/**
+ * Who is logged in (D-061): the account owner or one of their children. Sets c.var.user (always the
+ * account owner, whose rules and PayPal apply), c.var.role, and c.var.agent: the owner's built-in
+ * chat agent, or the child, so everything a child buys counts against their own allowance.
+ * Returns false when there is no valid session.
+ */
+async function loadSession(c: Context<AppEnv>): Promise<boolean> {
+  const session = await sessionFor(getCookie(c, SESSION_COOKIE));
+  if (!session) return false;
+  let agent: AgentContext | null;
+  if (session.childId) {
+    agent = await getAgent(session.user.id, session.childId);
+    if (!agent || agent.kind !== "child" || agent.status === "revoked") return false;
+  } else {
+    agent = await ensureBuiltinAgent(session.user.id);
+  }
+  c.set("user", session.user);
+  c.set("role", session.childId ? "child" : "owner");
+  c.set("agent", agent);
+  return true;
+}
+
+/** Anyone logged in, parent or child: shopping (chat, checkout) and the child's own view. */
+export const requireMember: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (!(await loadSession(c))) return c.json({ error: "Please log in." }, 401);
+  await next();
+};
+
+/** The account owner only (D-053): rules, wallet, agents, approvals and refunds. Children get a 403. */
 export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const user = await userForSession(getCookie(c, SESSION_COOKIE));
-  if (!user) return c.json({ error: "Please log in." }, 401);
-  c.set("user", user);
-  c.set("agent", await ensureBuiltinAgent(user.id));
+  if (!(await loadSession(c))) return c.json({ error: "Please log in." }, 401);
+  if (c.var.role === "child") return c.json({ error: "Only a parent can do this. Ask them to approve or change it." }, 403);
   await next();
 };
 

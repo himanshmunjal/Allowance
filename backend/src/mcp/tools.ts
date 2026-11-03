@@ -31,7 +31,8 @@ export const SERVER_INFO = { name: "allowance", version: "1.1.0" };
 
 export const SERVER_INSTRUCTIONS =
   "Allowance lets you buy things with the user's PayPal within rules they set. Search first, then request_purchase with a product id. " +
-  "Prices come from the catalog (you never set one). Outcomes: PAID, PENDING_APPROVAL (give the user the approvalUrl), or BLOCKED (explain; never try to get around it).";
+  "Prices come from the catalog (you never set one). Outcomes: PAID, PENDING_APPROVAL (give the user the approvalUrl), BLOCKED (explain; never try to get around it), or PROCESSING (being confirmed: don't retry). " +
+  "Repeating a purchase or splitting one into small ones sends it to the user for approval.";
 
 export function registerAllowanceTools(server: McpServer, ops: AllowanceOps) {
   server.registerTool(

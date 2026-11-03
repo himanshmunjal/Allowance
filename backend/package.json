@@ -10,6 +10,8 @@
     "build": "tsup",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 --test-reporter=spec test/*.test.ts",
+    "redteam": "node --import tsx --env-file-if-exists=.env scripts/redteam.ts",
     "check-ai": "tsx scripts/check-ai.ts",
     "mcp": "tsx mcp/server.ts",
     "mcp:demo": "tsx scripts/mcp-demo.ts",
