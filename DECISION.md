@@ -672,6 +672,45 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
 * **Status.** Accepted. Verified: the saved rules clean up; "electronics over $50" is kept; the same
   sentence re-parsed gives no thresholds.
 
+## D-061 · Parental controls: children as allowance holders who log in  ·  *builds on D-053, D-054*
+
+* **Context.** "Give a kid an allowance with rules" is the same problem as "give an AI agent an
+  allowance with rules", and a story everyone understands.
+* **Decision.** A child is an `agents` row with `kind = 'child'` plus a **username + password** the
+  parent picks (`login_name`, scrypt `password_hash`; added with `ADD COLUMN IF NOT EXISTS`).
+  * **Login:** the same login form; no "@" = a child's username. The child's session row carries
+    `agent_id`, so the child acts *inside the parent's account*: the parent's rules and PayPal, the
+    child's own allowance. `GET /api/auth/me` → `{ role: "owner" | "child", child }`; a child never
+    sees the parent's email.
+  * **Two middlewares:** `requireMember` (parent or child: chat, Allowance Checkout, `/api/kid`) and
+    `requireUser` (parent only: rules, wallet, agents, ledger, approvals, refunds → 403 for a child).
+  * **A child always has a weekly allowance** (enforced on create and edit). Auto-pay limit,
+    allowed categories and "always ask" work as for agents. Parents can pause, reset the password
+    (logs the child out everywhere) or remove the child (login freed, sessions deleted, history kept).
+  * **Kid-safe check** (`lib/child-safety.ts`): a new pipeline step for children only, after the
+    allowance step. Deterministic keyword screen for alcohol, tobacco/vaping, cannabis, gambling,
+    weapons and adult content (plus the gambling category). **Can't be turned off by any rule.**
+    "Root beer" and "ginger beer" are allowed.
+  * **Chat for kids:** same agent loop with an extra system prompt (simple words, never suggest
+    age-restricted items, PENDING_APPROVAL = "sent to your parent", no approval link). A child's
+    `get_spending_status` shows only their allowance; `list_recent_transactions` only their own;
+    their chats are stored under a separate key.
+  * **Kid home:** allowance meter, "My rules" in plain words, the shopping helper, "My purchases"
+    with "Cancel this request" for pending ones. Checkout: a child buys only as themselves.
+* **Why not separate user accounts for kids?** PayPal accounts are 18+, and the parent must stay
+  the payer and the approver. Modelling the child as an allowance holder reuses the whole pipeline
+  (budget re-check under the advisory lock, timeline, audit) with no new money paths. We store a
+  first name and username only: no email or birthday (data minimisation for minors).
+* **Bug fixed along the way:** `AgentLimits.partial()` re-applied the defaults, so **Pause/Resume
+  (which sends only `status`) wiped the agent's limits**. PATCH now uses `AgentPatch` (all fields
+  optional, no defaults).
+* **Status.** Accepted. Verified via the API with a throwaway family (deleted afterwards): $8 LEGO →
+  approval (no wallet) with "Waiting for a parent"; $22 → over the child's $10 auto-pay → approval;
+  beer → BLOCKED by the kid-safe check; root beer → passes the check; child gets 403 on rules,
+  wallet, ledger, agents and approvals; child withdraws own request; pause keeps limits and blocks;
+  password reset kills the old session; kid chat refuses "beer and a vape" and reports their own
+  allowance.
+
 ## D-060 · Demo storefront "Brew & Co." with "Pay with Allowance"  ·  *builds on D-051 (quotes)*
 
 * **Context.** Judges should *see* how a real store would integrate, not just an API.
@@ -708,3 +747,107 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
   the purchase status (paid / approved / refunded / withdrawn / failed) and shows the timeline in
   the ledger and on the approval page. Older purchases fall back to the reason list.
 * **Status.** Accepted. Verified on a blocked (casino) and an auto-paid (2× tea) purchase.
+
+## D-062 · A lost PayPal response is "unknown", never "failed"  ·  *fixes D-020*
+
+* **Context.** Audit before submission. `autoPay` caught every error and marked the purchase `FAILED`,
+  and the agent then says "nothing was charged". On a timeout or dropped connection after PayPal
+  captured, that statement is false, and the budget is released for money that actually moved. Also,
+  `fetch` had no timeout, and an HTML 502 crashed `JSON.parse` and hid the real status.
+* **Decision.** The PayPal client has a 20 s timeout and retries network errors and 5xx, but only for
+  reads and for writes carrying a `PayPal-Request-Id`. If it's still unknown, the row stays `PROCESSING`
+  (holding budget), and a one-minute sweep re-sends the same id. It stops at 3 hours, well inside
+  PayPal's idempotency window: past that a retry could charge twice, so a person has to look.
+  Webhooks now verify the raw body (re-serializing can break a genuine signature), turn auto-pay off
+  on `VAULT.PAYMENT-TOKEN.DELETED`, and pause the agent on `CUSTOMER.DISPUTE.CREATED`.
+* **Status.** Accepted. Tested against a fake PayPal that drops the connection after charging: exactly one charge.
+  Webhook handling for those two events is tested with simulated events, not yet from PayPal itself.
+
+## D-063 · The injection screen reads every seller-written field  ·  *fixes D-035*
+
+* **Context.** Only `description` was screened, so moving the same text to the product name or the
+  store name got through, and zero-width characters beat the regexes.
+* **Decision.** Screen name, description and merchant. Normalize first (NFKC, strip format characters).
+* **Limit.** It is still pattern matching and new phrasings can pass. It is one layer, documented as such.
+* **Status.** Accepted.
+
+## D-064 · Velocity guard: retries and splitting are enforced, not requested
+
+* **Context.** The agent's prompt said "don't split a purchase or retry", but nothing enforced it. An LLM that
+  repeats a tool call would pay twice, and ten $20 purchases passed a $25 auto-pay limit one by one.
+* **Decision.** A deterministic step: the same product by the same agent within 10 minutes, auto-payments at one
+  merchant adding up past the auto-pay limit within an hour, or 5+ auto-payments within 10 minutes all
+  need approval. Checked before the AI (to save a call) and again under the lock (for races). It only
+  ever asks, never blocks, so a false positive costs one tap. Purchases a human approved don't count.
+* **Also fixed.** The final check ignored `NEEDS_APPROVAL`: turning on "always ask" during the AI check still auto-paid.
+  It now re-reads rules on the transaction's own client. Using the pool there could deadlock, because the
+  advisory lock can queue every pooled connection. And the first reason on a held purchase now says why
+  it was held, instead of "fits the budget".
+* **Status.** Accepted.
+
+## D-065 · The Attack Lab
+
+* **Context.** Every project claims to be safe. Ours can be shown, live, and the same scenarios guard against regressions.
+* **Decision.** `lib/redteam.ts` runs each attack through the real `requestPurchase` in a throwaway account, deleted
+  afterwards. Two internal options that no route or MCP tool passes: `simulatePayment` (PayPal is never
+  called) and `assessRisk` (the reviewer is rigged to approve everything on "code" attacks, so the
+  deterministic layers are shown to hold with the model fully fooled). Served as `/lab`, `npm run redteam` and in `npm test`.
+* **Why not run on the user's account?** A failed defence would touch real money and a real ledger.
+* **Verified.** Disabling a defence makes the matching attack fail: velocity guard, field screening and the final check each tried.
+* **Status.** Accepted.
+
+## D-066 · Spending Explorer on AG Grid
+
+* **Context.** AG Grid is the largest sponsor track, and a trust product needs a real audit surface; the side-panel list stops at 50 rows.
+* **Decision.** AG Grid Community, themed from the app's CSS variables, so one theme covers light and dark.
+  *Ask in English:* the model returns a Zod-validated view that drives the grid's external filter and sort. It gets column names
+  and the user's agent names, never a transaction, so a seller's text can't reach it and it can't misreport a number.
+  *Verify with PayPal:* `GET /v2/payments/captures/{id}` per row, compared on amount and status, read-only.
+* **Chart?** No: the question is "which purchases", so a table plus three totals reads better than a chart.
+* **Status.** Accepted. The grid and verify flow are checked in a browser and with fake PayPal captures; real sandbox captures still to be tried.
+
+## D-067 · One-click demo accounts  ·  *complements D-053*
+
+* **Context.** A login wall, an empty ledger and a PayPal setup are too much to ask of a judge with many projects to get through.
+* **Decision.** Logged-out visitors get a landing page; `POST /api/demo/start` creates a populated account (rules, two
+  agents, a child, history). Recent rows come from the real pipeline; older rows have `source = 'sample'` and are labelled, with
+  no PayPal ids, and sit outside the budget window. Deleted after 24 hours, with no usable password, and rate limited.
+* **Shared wallet.** `DEMO_VAULT_ID` lets visitors see auto-pay with no PayPal login. Everyone shares it, so the demo refuses to run
+  unless the PayPal base is the sandbox, and Disconnect doesn't revoke it at PayPal.
+* **Status.** Accepted.
+
+## D-068 · Rule advisor: decisions become suggested rules
+
+* **Decision.** Code counts approvals, rejections and refunds per category and proposes changes; tightening is listed first. AI only
+  writes a sentence on the trade-off, from counts alone, and the facts stand without it. Apply re-derives the proposal on
+  the server, so a client can only apply what the evidence supports now. Nothing changes without a click.
+* **Status.** Accepted.
+
+## D-069 · Render: no rootDir  ·  *fixes D-042*
+
+* **Context.** Render's docs: files outside a service's root directory aren't available at build time or at runtime. The Blueprint
+  set `rootDir: backend` with `cd .. && npm ci`, but this is a workspace with one root `node_modules`.
+* **Decision.** No `rootDir`; workspace commands from the root; `npm ci --include=dev`, since builds need tsup and TypeScript; `buildFilter`
+  so each service redeploys only when its files change.
+* **Status.** Accepted, not yet deployed.
+
+## D-070 · Which sponsors, and why
+
+* **Used:** AG Grid (D-066), Channel3 (D-050), Render (D-069). **Spec only:** `docs/openapi.yaml` for Postman and APIMatic, usable by anyone without an account here.
+* **Left out on purpose:** Bryntum (no scheduling in this product, and a calendar would be decoration), Elastic (a 30-product demo catalog doesn't need
+  vector search, and Channel3 already does search), Kernel and Astropods (would add a key judges need, with no change to the trust story),
+  Zapier (approval alerts are genuinely useful, and the next thing to add, but no prize track was listed).
+* **Status.** Accepted.
+
+## D-071 · Dashboard layout and contrast  ·  *fixes D-068's side effect*
+
+* **Context.** Builder's screenshot: rule suggestions (D-068) made the rules card taller, and the right column had a fixed
+  height, so Purchases shrank to one cut-off row. Measured: 113px and no complete row at 1024×768. Chip labels were as low as 2.5:1,
+  and white text sat on light accents in dark mode.
+* **Decision.** The column height no longer depends on the window: Purchases is always 32rem and scrolls inside itself, and the chat stays in view
+  as the page scrolls. Suggestions and the long rule text start collapsed; the demo steps can be hidden. The header stays on one row from
+  laptop width. Colours: chip labels lose their opacity, dark panels separate from each other, and a new `--on-accent` token
+  sets text on solid accents per theme.
+* **Why collapse suggestions?** They are useful but occasional, and the ledger is what people watch.
+* **Status.** Accepted. Measured at 5 window sizes in both themes: Purchases 512px at each, no sideways scroll, every sampled colour at least 4.5:1.
+

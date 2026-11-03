@@ -371,7 +371,39 @@ merchant-initiated vaulted payments (auto-pay), refunds, plus the MCP path.
 | 21.4 | E2E with a throwaway account: $34 beans → approval; $999 espresso → blocked; store order page in sync | ✅ test data deleted |
 | 21.5 | `GET /mcp` → 405 "use POST" | ✅ |
 
+## Phase 22: Parental controls (D-061)
+
+| Step | What | Result |
+|---|---|---|
+| 22.1 | Migration: `agents.login_name`, `agents.password_hash`, `sessions.agent_id`; `lib/passwords.ts` shared by parents and children | ✅ |
+| 22.2 | `createChild`, `childForLogin`, password reset, remove; `POST /api/agents/children`; login by username | ✅ |
+| 22.3 | `requireMember` vs `requireUser` (parent-only routes → 403 for a child); `/api/kid` (own view, withdraw) | ✅ |
+| 22.4 | Kid-safe pipeline step (`lib/child-safety.ts`); child-mode chat prompt; own transactions/chats only | ✅ |
+| 22.5 | Frontend: kid home (allowance meter, my rules, helper, my purchases), "Add a child" + reset/pause/remove, login label, kid checkout | ✅ typecheck, lint, `next build` |
+| 22.6 | Fix: PATCH with only `status` no longer resets an agent's limits (`AgentPatch`) | ✅ |
+| 22.7 | API E2E with a throwaway family (allowance, kid-safe, 403s, withdraw, pause, reset, kid chat) | ✅ test data deleted |
+
+## Phase 23: Hackathon hardening (D-062 – D-070)
+
+| Step | What | Result |
+|---|---|---|
+| 23.1 | Audit: docs, code, prize tracks; Render's docs on root directories | Money-correctness gaps found; Blueprint can't have worked as written |
+| 23.2 | PayPal client: timeout, safe retries, non-JSON errors; unknown outcome → `PROCESSING` + recovery sweep | ✅ one charge when the connection drops after charging |
+| 23.3 | Injection screen on all fields + normalization; velocity guard; final check honours "ask"; held reason first | ✅ |
+| 23.4 | Tests with `node:test` and a fake PayPal; CI; `docker-compose.yml` | ✅ all pass, twice in a row on one DB |
+| 23.5 | Attack Lab: `lib/redteam.ts`, `/lab`, `npm run redteam` | ✅ all stopped in a browser, with no AI key (AI attack shows the fail-safe) |
+| 23.6 | Mutation check: disable each of 3 defences | ✅ the matching attacks fail, then restored |
+| 23.7 | Spending Explorer on AG Grid: ask, verify, CSV | ✅ headless Chrome, light + dark, phone |
+| 23.8 | Landing page, one-click demo, demo banner, rule advisor | ✅ browser + API tests |
+| 23.9 | Browser review found: misleading first reason, header wrap, phone overflow, an overclaim on the landing page | ✅ fixed |
+| 23.10 | `render.yaml` without `rootDir`; `docs/openapi.yaml`; `SUBMISSION.md` | ✅ written; deploy still to do |
+| 23.11 | `docs/LLD.md` rewritten to match the code (it still described the single-user SQLite design); README sections, diagram and logs updated | ✅ |
+
+| 23.12 | Builder's screenshot: Purchases squeezed to one row, faint text → layout and contrast fix (**D-071**) | ✅ 512px at 5 window sizes, all sampled colours ≥ 4.5:1 |
+
+**Tested so far:** with a fake PayPal and no AI key. **Not yet run:** real PayPal or AI keys, English questions in the Explorer, the Render deploy, `docker-compose.yml`, the GitHub CI workflow.
+
 ## Next steps (to do with real keys)
 1. Fill `backend/.env` and `frontend/.env.local` (see README) → `npm run check-ai` → `npm run dev`.
-2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund.
-3. Deploy to Render, set `APP_URL`, add the PayPal webhook, record the < 3 min demo video.
+2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund → Verify with PayPal → a question in the Explorer → `npm run redteam`.
+3. Deploy to Render, set `APP_URL`, add the PayPal webhook, record the < 3 min demo video (script in `SUBMISSION.md`).

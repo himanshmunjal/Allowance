@@ -1,0 +1,299 @@
+openapi: 3.0.3
+info:
+  title: Allowance Agent & Merchant API
+  version: 1.1.0
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+  description: |
+    Let AI agents pay with PayPal, inside rules a human set.
+
+    There are two trust domains, each with its own key:
+
+    * **Agents** can search, ask to buy and withdraw their own requests. They never name a price and can never approve or refund.
+    * **Merchants** name the price, by creating a checkout quote that an agent can then only refer to by id.
+
+    The same operations are available to MCP clients at `POST /mcp` (Streamable HTTP).
+
+    Import this file into Postman, or into APIMatic to generate client SDKs.
+servers:
+  - url: http://localhost:4000
+    description: Local backend
+tags:
+  - name: Agent
+    description: Used by an AI agent, with its own key from the dashboard
+  - name: Merchant
+    description: Used by a store, with MERCHANT_API_KEY
+  - name: Store
+    description: The Brew & Co. demo store (public)
+paths:
+  /api/agent/search:
+    post:
+      tags: [Agent]
+      operationId: searchProducts
+      summary: Search the catalog
+      description: Live retailer products via Channel3 when configured, otherwise the demo catalog. Prices are re-checked at purchase.
+      security: [{ agentKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query: { type: string, example: coffee beans }
+                maxPrice: { type: number, example: 25 }
+                category: { $ref: "#/components/schemas/Category" }
+      responses:
+        "200":
+          description: Matching products
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products]
+                properties:
+                  products:
+                    type: array
+                    items: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/agent/status:
+    get:
+      tags: [Agent]
+      operationId: getSpendingStatus
+      summary: The owner's rules and budget, and this agent's allowance
+      security: [{ agentKey: [] }]
+      responses:
+        "200":
+          description: Spending status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: { type: string, example: "$150/week · auto-pay ≤ $25 · max $100 per purchase" }
+                  autoPay: { type: string }
+                  agent:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      status: { type: string, enum: [active, paused] }
+                      allowance: { type: string }
+                      spentThisWeek: { type: number }
+                      remaining: { type: number }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/agent/purchase:
+    post:
+      tags: [Agent]
+      operationId: requestPurchase
+      summary: Ask to buy something
+      description: |
+        Runs the full pipeline: server-side price, the owner's rules, this agent's allowance, prompt-injection screen,
+        retry and split guard, AI risk check, a final check under a database lock, then PayPal. There is deliberately no
+        price field: anything like one is ignored.
+      security: [{ agentKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, intent, reason]
+              properties:
+                productId: { type: string, description: "From search, or a q_… checkout quote id", example: p_beans_ethiopia }
+                quantity: { type: integer, minimum: 1, maximum: 20, default: 1 }
+                intent: { type: string, minLength: 3, maxLength: 1000, description: What the user asked for, in their words, example: Buy me fruity coffee beans }
+                reason: { type: string, minLength: 3, maxLength: 1000, description: Why this product fits, example: Light roast with citrus notes from a verified roaster }
+      responses:
+        "200":
+          description: The decision. A BLOCKED purchase is a successful response, not an error.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PurchaseResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/agent/purchases/{id}/withdraw:
+    post:
+      tags: [Agent]
+      operationId: withdrawPurchase
+      summary: Cancel this agent's own request while it waits for approval
+      security: [{ agentKey: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Withdrawn
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, example: REJECTED }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/agent/transactions:
+    get:
+      tags: [Agent]
+      operationId: listTransactions
+      summary: This agent's recent purchases, and why each was decided that way
+      security: [{ agentKey: [] }]
+      responses:
+        "200":
+          description: Up to 20 purchases, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        status: { $ref: "#/components/schemas/Status" }
+                        item: { type: string }
+                        amount: { type: number }
+                        merchant: { type: string }
+                        reasons: { type: array, items: { type: string } }
+                        createdAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/merchant/quotes:
+    post:
+      tags: [Merchant]
+      operationId: createQuote
+      summary: State an item and price for an agent to buy
+      description: Valid for 24 hours. The agent passes the returned quoteId as productId, and can't change the price.
+      security: [{ merchantKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteInput" }
+      responses:
+        "201":
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/QuoteInput"
+                  - type: object
+                    required: [quoteId, expiresAt]
+                    properties:
+                      quoteId: { type: string, example: q_3f9a1c7e2b4d }
+                      expiresAt: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/store/products:
+    get:
+      tags: [Store]
+      operationId: listStoreProducts
+      summary: The demo store's products
+      responses:
+        "200": { description: Store name and products }
+  /api/store/checkout:
+    post:
+      tags: [Store]
+      operationId: startStoreCheckout
+      summary: Price an order and get a "Pay with Allowance" link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: string }
+                quantity: { type: integer, minimum: 1, maximum: 5, default: 1 }
+      responses:
+        "200":
+          description: A quote id and the checkout page to send the shopper to
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quoteId: { type: string }
+                  quantity: { type: integer }
+                  checkoutUrl: { type: string }
+        "404": { description: Unknown product }
+components:
+  securitySchemes:
+    agentKey:
+      type: http
+      scheme: bearer
+      description: "An agent's own key (alw_…), created in the dashboard and shown once"
+    merchantKey:
+      type: http
+      scheme: bearer
+      description: MERCHANT_API_KEY
+  responses:
+    Unauthorized:
+      description: Missing, wrong or revoked key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: The request can't be processed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+    Category:
+      type: string
+      enum: [coffee, groceries, gifts, electronics, books, clothing, home, gambling, other]
+    Status:
+      type: string
+      enum: [PROCESSING, PAID, PENDING_APPROVAL, BLOCKED, REJECTED, REFUNDED, FAILED]
+    Product:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        rating: { type: number, nullable: true }
+        deliveryDays: { type: integer, nullable: true }
+        merchantName: { type: string }
+        merchantVerified: { type: boolean }
+        source: { type: string, enum: [demo, channel3, quote] }
+        url: { type: string }
+    PurchaseResult:
+      type: object
+      required: [status, transactionId, title, merchant, amount, currency, reasons]
+      properties:
+        status:
+          type: string
+          enum: [PAID, PENDING_APPROVAL, BLOCKED, FAILED, PROCESSING]
+          description: |
+            PAID: done. PENDING_APPROVAL: give the user approvalUrl. BLOCKED: explain, and don't try to get around it.
+            FAILED: PayPal said no, nothing was charged. PROCESSING: PayPal's answer was lost and it's being confirmed: don't retry.
+        transactionId: { type: string }
+        title: { type: string }
+        merchant: { type: string }
+        amount: { type: number }
+        currency: { type: string, example: USD }
+        reasons: { type: array, items: { type: string } }
+        approvalUrl: { type: string, description: Only for PENDING_APPROVAL. Opening it requires the owner's login. }
+    QuoteInput:
+      type: object
+      required: [merchant, item, price]
+      properties:
+        merchant: { type: string, minLength: 2, maxLength: 80, example: shop.example.com }
+        item: { type: string, minLength: 2, maxLength: 160, example: Yoga mat }
+        price: { type: number, exclusiveMinimum: true, minimum: 0, maximum: 10000, example: 36 }
+        category: { allOf: [{ $ref: "#/components/schemas/Category" }], default: other }
+        description: { type: string, maxLength: 1000 }
+        url: { type: string, format: uri }
+        sellerVerified: { type: boolean, default: true }
+        rating: { type: number, minimum: 0, maximum: 5, nullable: true }
+        deliveryDays: { type: integer, minimum: 0, maximum: 90, nullable: true }

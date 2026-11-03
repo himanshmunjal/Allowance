@@ -1,10 +1,28 @@
 # Allowance: let AI agents pay with PayPal, safely
 
+[![CI](https://github.com/himanshmunjal/Allowance/actions/workflows/ci.yml/badge.svg)](https://github.com/himanshmunjal/Allowance/actions/workflows/ci.yml)
+
 > **Give your AI agent an allowance, not your wallet.**
 > Allowance is a trust layer for agentic payments. You set rules in plain English; an AI agent
 > (runs on **free Gemini / Groq keys**, or Claude) shops for you; every purchase passes through a deterministic policy engine and an
 > independent AI risk check, then is **auto-paid with your vaulted PayPal wallet**, **sent to you
-> for one-tap approval in PayPal**, or **blocked with a reason**. Any agent can use it over MCP.
+> for one-tap approval in PayPal**, or **blocked with a reason**. Any agent can use it over MCP,
+> and a child can have an allowance too.
+
+## Try it as a judge
+
+**Live demo: TODO_HOSTED_URL**. Click **Try the live demo**: no sign-up, sandbox money only.
+
+1. **Attack it.** Open **Attack Lab** and run every attack: prompt injection, double charges, split purchases, budget races, all live against the real pipeline.
+2. **Shop.** Ask the agent for coffee beans (auto-paid), or open the pending earbuds and pay with the PayPal button. Test buyer: `TODO_SANDBOX_BUYER_EMAIL` / `TODO_SANDBOX_BUYER_PASSWORD`.
+3. **Audit.** Open **Explorer**, ask the ledger a question in English, then click **Verify with PayPal**.
+4. **Be the kid.** The demo banner gives you a child's login. Try asking for a beer.
+
+No PayPal or AI keys needed to check the safety claims yourself:
+```bash
+git clone https://github.com/himanshmunjal/Allowance && cd Allowance
+npm install && docker compose up -d && npm test
+```
 
 ![Architecture](architecture.png)
 
@@ -28,6 +46,33 @@ listing? Allowance answers that with the controls you'd give a teenager with a c
 server catalog, the user's intent comes from the user's own messages, and the AI risk check can
 only make a decision *stricter*.
 
+## What stops an agent going wrong
+
+Run these yourself in the **Attack Lab** or with `npm run redteam`. On every attack marked *code*,
+the AI reviewer is rigged to approve everything, so the code has to hold on its own.
+
+| Attack | What happens | Layer |
+|---|---|---|
+| Injection in a listing, a product name or a store name, including Unicode disguises | Blocked by a deterministic screen | code |
+| Agent names its own price | Ignored: there is no price input | code |
+| Runaway quantity, forbidden category, unverified seller | Blocked | code |
+| Retried tool call (double charge) | One payment; the repeat waits for a human | code |
+| Splitting one purchase, or draining in small bites | Held for a human once it adds up | code |
+| 12 purchases racing a $50 budget | Serialized by a database lock: never over budget | code |
+| Rules changed while a purchase is in flight | The newest rule wins | code |
+| Paused agent, over its allowance, outside its category | Blocked | code |
+| A child buying beer | Blocked by a check no rule can turn off | code |
+| Agent buys the wrong item (asked for socks, buys a monitor stand) | Stopped by the AI reviewer; if AI is down, it fails safe to asking | AI |
+
+The injection screen is a set of patterns, so it is a filter and not a guarantee: a new phrasing can
+get past it. That is why it isn't the only layer, and why the worst an injected agent can do is still
+bounded by the limits above.
+
+**When the network fails.** If PayPal's answer is lost, a payment is never reported as "failed:
+nothing charged", because it may have gone through. It stays `PROCESSING`, still holding budget, and
+is settled by re-sending the same `PayPal-Request-Id`, which PayPal treats as the same order. The
+tests prove this against a fake PayPal that drops the connection *after* charging.
+
 ## Demo flow (what the video shows)
 
 1. **Auto-pay**: "Buy me fruity coffee beans" → agent compares 3 roasts → $18.50 passes every rule
@@ -40,6 +85,10 @@ only make a decision *stricter*.
 4. **Blocked: rules.** "Buy $50 of casino credits" → blocked category, never reaches PayPal.
 5. **Undo**: one-tap **refund** through the PayPal Payments API.
 6. **Any agent**: the same rules apply when Claude Desktop shops through the **Allowance MCP server**.
+7. **Attack it**: the **Attack Lab** fires 18 live attacks at the pipeline and shows how each one ended.
+8. **Audit it**: the **Spending Explorer** answers questions about the ledger and checks payments against PayPal.
+
+The full, timed video script is in [`SUBMISSION.md`](SUBMISSION.md).
 
 ---
 
@@ -52,7 +101,8 @@ only make a decision *stricter*.
 | **Orders v2** create + capture | `backend/src/routes/approvals.ts` | Human-approved purchases |
 | **JS SDK v6**: `@paypal/react-paypal-js` `PayPalOneTimePaymentButton` | `frontend/app/approve/[id]/ApproveView.tsx` | One-tap approval on the approval page |
 | **Payments v2** refunds | `backend/src/lib/purchase.ts` → `refundPurchase()` | One-tap refund from the ledger |
-| **Webhooks** + signature verification | `backend/src/routes/webhook.ts` | Reconcile `PAYMENT.CAPTURE.*` events (when hosted) |
+| **Payments v2** captures (read) | `backend/src/lib/explorer.ts` → `reconcile()` | **Verify with PayPal**: compare every ledger row to PayPal's own record |
+| **Webhooks** + signature verification | `backend/src/routes/webhook.ts` | Reconcile `PAYMENT.CAPTURE.*`; `VAULT.PAYMENT-TOKEN.DELETED` turns auto-pay off when the buyer removes consent in PayPal; `CUSTOMER.DISPUTE.CREATED` pauses the agent that made the purchase |
 | OAuth 2.0 client credentials, `PayPal-Request-Id` idempotency | `backend/src/lib/paypal.ts` | Auth and safe retries (no double charges) |
 
 ## AI tools used
@@ -73,6 +123,8 @@ How the AI is used:
 | **Shopping agent** (`backend/src/lib/agent.ts`) | Tool-use loop: `search_products`, `get_spending_status`, `request_purchase`, `list_recent_transactions`. Shows which provider answered each message |
 | **AI risk check** (`backend/src/lib/risk.ts`) | Structured JSON: does the cart match what the user asked for? Flags mismatches, odd quantities and manipulation. Fails safe to "needs approval" |
 | **Rule parser** (`backend/src/lib/rules-parser.ts`) | Structured JSON: plain-English rules → typed policy |
+| **Rule advisor** (`backend/src/lib/advisor.ts`) | Your decisions become suggested rules. Code counts the evidence, AI explains the trade-off, nothing changes until you click Apply |
+| **Ledger questions** (`backend/src/lib/explorer.ts`) | English → a grid view (filters and a sort). The model never sees a transaction |
 | **Provider layer** (`backend/src/lib/llm/`) | One interface over Gemini, Groq and Claude, with automatic fallback |
 | **MCP server** (`@modelcontextprotocol/sdk`) | `backend/mcp/server.ts` exposes Allowance to *any* MCP agent (e.g. Claude Desktop) |
 
@@ -82,10 +134,20 @@ calls; the AI risk check runs only for purchases that would be paid automaticall
 
 ---
 
+## Sponsor tools
+
+| Tool | How it's used |
+|---|---|
+| **AG Grid** | The Spending Explorer (`frontend/app/explorer/`): the full ledger with sorting, column filters, pagination and CSV export, themed from the app's own design tokens in light and dark. An AI question box drives the grid's external filter and sort, and a PayPal column fills in live from reconciliation |
+| **Channel3** | Live product search across real retailers. The price is fetched again at purchase time, and if it can't be verified, nothing is bought |
+| **Render** | One-click Blueprint deploy (`render.yaml`): two services and PostgreSQL |
+| **Postman / APIMatic** | [`docs/openapi.yaml`](docs/openapi.yaml) describes the agent and merchant APIs. Import it into Postman to explore them, or into APIMatic to generate client SDKs |
+
 ## Run it locally (about 10 minutes)
 
 ### Prerequisites
 * Node.js **22.12+** and npm
+* **PostgreSQL**: `docker compose up -d` starts one, or use your own
 * A free **PayPal Developer** account: <https://developer.paypal.com>
 * At least one AI key. **Free:** Gemini (<https://aistudio.google.com/apikey>) and/or
   Groq (<https://console.groq.com/keys>). Optional paid: Anthropic (<https://console.anthropic.com>)
@@ -118,7 +180,9 @@ npm run dev                                   # backend :4000 + frontend :3000 �
 | `GEMINI_API_KEY` | ✅ one AI key | Free key from Google AI Studio |
 | `GROQ_API_KEY` | recommended | Free key from GroqCloud: automatic fallback when Gemini is rate-limited |
 | `ANTHROPIC_API_KEY` | optional | Paid Claude key |
-| `DATABASE_URL` | ✅ | PostgreSQL, e.g. `postgres://postgres:<password>@localhost:5432/allowance` (create the DB once with `createdb -U postgres allowance`; tables are created on startup) |
+| `DATABASE_URL` | ✅ | With `docker compose up -d`, keep the value from `.env.example`. Your own PostgreSQL: create the DB once with `createdb -U postgres allowance`. Tables are created on startup |
+| `DEMO_MODE` | – | The one-click demo. Empty = on against the PayPal sandbox only; `off` hides it |
+| `DEMO_VAULT_ID` / `DEMO_PAYER_EMAIL` | – | A **sandbox** vault id shared by demo accounts, so visitors see auto-pay with no PayPal login. See `.env.example` |
 | `AGENT_API_KEY` | – | The agent key the local MCP server / scripts act as. Create agents (each with its own key) in the dashboard's **Agents** tab; if this is set before the first sign-up, that account gets it as its first agent |
 | `MERCHANT_API_KEY` | – | Key an external store uses to create checkout quotes (`npm run external-buy`). Any long random string |
 | `APP_URL` | ✅ | The **frontend** URL: `http://localhost:3000` locally |
@@ -149,6 +213,18 @@ npm run dev                                   # backend :4000 + frontend :3000 �
 4. Expand a ledger row to see *why* each decision was made; click **↩ Refund** on a paid one.
 5. Edit **Your rules** in plain English (e.g. "ask me for anything over $10") and watch the chips update.
 
+6. **Parental controls:** in the ledger's **Agents & kids** tab, click **+ Add a child**: pick a
+   name, a username, a password and a weekly allowance. Log out, then log in with the child's
+   username. The child gets their own home: allowance meter, a kid-friendly shopping helper and
+   "My purchases". Anything over their limits comes to you to approve. Alcohol, vaping, gambling,
+   weapons and adult items are always blocked for children (try the "🍺 Try: beer" chip).
+7. **Attack Lab:** click **Attack Lab** in the header, then **Run every attack**. Open a row to see every
+   check it went through. It can't touch your ledger or call PayPal.
+8. **Spending Explorer:** click **Explorer** in the header. Ask a question ("biggest purchases you blocked"),
+   click a row to see its decision timeline, click **Verify with PayPal**, or export a CSV.
+9. **Rule suggestions:** once you've approved or rejected a few purchases, **Your rules** suggests changes.
+   Nothing changes until you click **Apply**.
+
 > Not connecting a wallet is fine: every purchase then routes to the approval page.
 
 > **Free-tier tips:** free quotas are per minute *and* per day. Add both a Gemini and a Groq key
@@ -157,8 +233,9 @@ npm run dev                                   # backend :4000 + frontend :3000 �
 
 ### 4. Let any AI agent shop through Allowance (MCP)
 
-The MCP server (`backend/mcp/server.ts`) gives any MCP-capable AI agent four tools:
-`search_products`, `get_spending_status`, `request_purchase`, `list_transactions`. Purchases go
+The MCP server (`backend/mcp/server.ts`) gives any MCP-capable AI agent five tools:
+`search_products`, `get_spending_status`, `request_purchase`, `withdraw_purchase_request`,
+`list_transactions`. Purchases go
 through the **same** rules, AI risk check and PayPal pipeline, and appear in the ledger tagged
 **external agent (MCP)**. Keep `npm run dev` running, then pick one:
 
@@ -225,10 +302,11 @@ Blueprint**):
 2. **allowance-frontend** (`frontend/`): set `NEXT_PUBLIC_PAYPAL_CLIENT_ID`.
 3. After the first deploy, set backend `APP_URL` = the frontend URL and frontend `BACKEND_URL` = the
    backend URL, then **redeploy the frontend** (`BACKEND_URL` is read at build time).
-4. Optional: PayPal webhook to `<backend URL>/api/paypal/webhook` (events `PAYMENT.CAPTURE.*`),
-   then set `PAYPAL_WEBHOOK_ID` on the backend.
+4. Optional: PayPal webhook to `<backend URL>/api/paypal/webhook` (events `PAYMENT.CAPTURE.*`,
+   `VAULT.PAYMENT-TOKEN.DELETED`, `CUSTOMER.DISPUTE.CREATED`), then set `PAYPAL_WEBHOOK_ID` on the backend.
 
-Note: data lives in Render PostgreSQL, so it survives redeploys (Render's free database expires after its trial period; see their pricing).
+Notes: Render's free services sleep when idle, so the first visit can take about a minute. Its free
+database expires after a trial period, so check that it will outlast judging.
 
 ---
 
@@ -239,15 +317,19 @@ agent / MCP client → request_purchase(product_id, qty, reason)
    1. price from server catalog (agent can't set it)
    2. deterministic rules + prompt-injection screen → BLOCK? log it, stop.
    3. no wallet connected → needs approval
-   4. AI risk check (only if it would auto-pay) → can only tighten: high → BLOCK, medium → approval
-   5. budget + agent allowance re-checked and row inserted in one PostgreSQL transaction (per-user lock, no races)
-   6a. ALLOW          → PayPal Orders v2 with vault_id → captured → PAID
-   6b. NEEDS_APPROVAL → /approve/:id → PayPal button → capture → PAID
+   4. retry, split and burst guard → needs approval
+   5. AI risk check (only if it would auto-pay) → can only tighten: high → BLOCK, medium → approval
+   6. rules, budgets, allowance and history re-read, and row inserted, in one PostgreSQL transaction (per-user lock, no races)
+   7a. ALLOW          → PayPal Orders v2 with vault_id → captured → PAID
+   7b. NEEDS_APPROVAL → /approve/:id → PayPal button → capture → PAID
+   7c. PayPal's answer lost → PROCESSING → settled by re-sending the same PayPal-Request-Id
 ```
 
+* **API:** [`docs/openapi.yaml`](docs/openapi.yaml)
 * **Design:** [`docs/LLD.md`](docs/LLD.md) (schema, pipeline, PayPal endpoints, API contracts)
 * **Every decision and why:** [`DECISION.md`](DECISION.md)
 * **How it was built, step by step:** [`FLOW.md`](FLOW.md)
+* **Hackathon submission text and video script:** [`SUBMISSION.md`](SUBMISSION.md)
 
 ## Project structure
 
@@ -255,25 +337,34 @@ agent / MCP client → request_purchase(product_id, qty, reason)
 allowance/
 ├─ frontend/                 Next.js 16 UI (port 3000)
 │  ├─ app/
-│  │  ├─ page.tsx            dashboard
+│  │  ├─ page.tsx            landing page, dashboard, or a child's home
+│  │  ├─ login/              log in, sign up, or start the demo
 │  │  ├─ approve/[id]/       PayPal approval page (JS SDK v6 button)
-│  │  └─ components/         Chat, RulesPanel, Ledger, Header, Dashboard
+│  │  ├─ explorer/           Spending Explorer (AG Grid)
+│  │  ├─ lab/                Attack Lab
+│  │  ├─ store/, checkout/   demo store and Allowance Checkout
+│  │  └─ components/         Landing, Dashboard, Chat, RulesPanel, Ledger, AgentsPanel, KidHome and more
 │  ├─ next.config.ts         proxies /api/* → BACKEND_URL
 │  └─ .env.example
 ├─ backend/                  Node + Hono API (port 4000)
 │  ├─ src/
 │  │  ├─ server.ts           entry point
 │  │  ├─ app.ts              routes, CORS, error handling
-│  │  ├─ routes/             chat, policy, transactions, approvals, wallet, webhook, agent, meta
-│  │  ├─ lib/                purchase pipeline, policy engine, injection screen, PayPal client,
-│  │  │  │                   catalog, agent, risk check, rule parser, auth, agents, PostgreSQL
+│  │  ├─ routes/             one file per API area (full list in docs/LLD.md)
+│  │  ├─ mcp/                MCP tools and the remote /mcp endpoint
+│  │  ├─ lib/                purchase pipeline, policy engine, injection screen, retry and split guard,
+│  │  │  │                   kid-safe check, PayPal client, catalog, agent, risk check, rule parser,
+│  │  │  │                   rule advisor, explorer, Attack Lab, demo accounts, auth, agents, PostgreSQL
 │  │  │  └─ llm/             Gemini, Groq, Claude + automatic fallback
 │  │  └─ shared/types.ts     API types (also imported type-only by the frontend)
 │  ├─ mcp/server.ts          MCP server for external agents
 │  ├─ scripts/check-ai.ts    tests AI keys
+│  ├─ test/                  unit, attack and API tests with a fake PayPal
 │  └─ .env.example
-├─ docs/                     LLD.md, architecture.dot (diagram source)
-├─ architecture.png · DECISION.md · FLOW.md · README.md · LICENSE · render.yaml
+├─ docs/                     LLD.md, openapi.yaml, architecture.dot (diagram source)
+├─ docker/, docker-compose.yml   local PostgreSQL and the test database
+├─ .github/workflows/        CI: typecheck, lint, tests, build
+├─ architecture.png · DECISION.md · FLOW.md · README.md · SUBMISSION.md · LICENSE · render.yaml
 └─ package.json              npm workspaces + scripts that run both apps
 ```
 
@@ -285,6 +376,8 @@ allowance/
 | `npm run build` / `npm start` | Production build / run both |
 | `npm run typecheck` | TypeScript check of both apps |
 | `npm run lint` | ESLint (frontend) |
+| `npm test` | All tests, on their own database with a fake PayPal: no keys needed (`docker compose up -d` first, or set `TEST_DATABASE_URL`) |
+| `npm run redteam` | Every Attack Lab scenario, in the terminal. PayPal is never called |
 | `npm run check-ai` | Test every configured AI key (2 requests each) |
 | `npm run mcp` | MCP server (stdio) |
 | `npm run mcp:demo` | Scripted external agent that exercises the MCP server |
