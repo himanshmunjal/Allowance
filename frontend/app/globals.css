@@ -11,35 +11,38 @@
   --brand: #0070e0;
   --brand-ink: #003087;
   --brand-soft: #e8f2fd;
-  --ok: #138a4a;
+  --ok: #0c6e39;
   --ok-soft: #e6f6ec;
-  --warn: #b25e00;
+  --warn: #8f4a00;
   --warn-soft: #fff4e2;
-  --bad: #c62b2b;
+  --bad: #b02222;
   --bad-soft: #fdecec;
   --ai: #6d3fd8;
   --ai-soft: #f1ebff;
+  /* Text and icons on a solid accent (bg-brand, bg-warn...). Dark mode's accents are light, so this flips. */
+  --on-accent: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b0f17;
     --panel: #121826;
-    --panel-2: #0f1520;
-    --line: #232c3d;
-    --ink: #e8ecf3;
-    --muted: #93a0b5;
+    --panel-2: #1b2334;
+    --line: #313c52;
+    --ink: #eef1f6;
+    --muted: #aab5c7;
     --brand: #4aa3ff;
     --brand-ink: #9cc9ff;
     --brand-soft: #102640;
-    --ok: #4cc983;
+    --ok: #5dd694;
     --ok-soft: #10291c;
-    --warn: #f0a640;
+    --warn: #f5b458;
     --warn-soft: #2e2210;
-    --bad: #ff6b6b;
+    --bad: #ff8585;
     --bad-soft: #321616;
-    --ai: #a98bff;
+    --ai: #b9a1ff;
     --ai-soft: #221a3d;
+    --on-accent: #0b0f17;
   }
 }
 
@@ -61,6 +64,7 @@
   --color-bad-soft: var(--bad-soft);
   --color-ai: var(--ai);
   --color-ai-soft: var(--ai-soft);
+  --color-on-accent: var(--on-accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

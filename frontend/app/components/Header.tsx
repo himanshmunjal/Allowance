@@ -20,24 +20,32 @@ export default function Header({
     <header className="sticky top-0 z-10 border-b border-line bg-panel/90 backdrop-blur">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-white">A</span>
+          <span className="grid size-9 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-on-accent">A</span>
           <div className="leading-tight">
             <div className="font-semibold">Allowance</div>
-            <div className="text-xs text-muted">AI agents pay with PayPal, within your rules</div>
+            <div className="hidden text-xs text-muted 2xl:block">AI agents pay with PayPal, within your rules</div>
           </div>
         </div>
-        <div className="order-3 w-full sm:order-none sm:w-auto sm:flex-1">{spend && <BudgetMeter spend={spend} />}</div>
+        <div className="order-3 w-full lg:order-none lg:w-auto lg:min-w-0 lg:flex-1">{spend && <BudgetMeter spend={spend} />}</div>
         <WalletButton wallet={wallet} onChange={onChange} />
-        <Link href="/store" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink" title="A demo store that accepts Pay with Allowance">
-          🛍 Demo store
-        </Link>
-        {user && <AccountMenu user={user} />}
+        <nav className="flex items-center gap-0.5">
+          <Link href="/lab" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink" title="Fire real attacks at the real pipeline">
+            Attack Lab
+          </Link>
+          <Link href="/explorer" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink" title="Your whole ledger: ask it questions, check it against PayPal">
+            Explorer
+          </Link>
+          <Link href="/store" className="rounded-lg px-2.5 py-1.5 text-xs text-muted hover:bg-panel-2 hover:text-ink" title="A demo store that accepts Pay with Allowance">
+            Demo store
+          </Link>
+        </nav>
+        {user && <AccountMenu label={user.email} />}
       </div>
     </header>
   );
 }
 
-function AccountMenu({ user }: { user: User }) {
+export function AccountMenu({ label }: { label: string }) {
   const [busy, setBusy] = useState(false);
   async function logout() {
     setBusy(true);
@@ -46,8 +54,8 @@ function AccountMenu({ user }: { user: User }) {
   }
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="hidden max-w-40 truncate text-muted lg:inline" title={user.email}>
-        {user.email}
+      <span className="hidden max-w-40 truncate text-muted 2xl:inline" title={label}>
+        {label}
       </span>
       <button onClick={logout} disabled={busy} className="rounded-lg border border-line px-2.5 py-1.5 text-muted hover:text-ink disabled:opacity-50">
         Log out
@@ -112,7 +120,7 @@ function WalletButton({ wallet, onChange }: { wallet: Wallet | null; onChange: (
           <span className="size-2 rounded-full bg-ok" />
           <span>
             <b>Auto-pay on</b>
-            {wallet.payerEmail ? <span className="hidden opacity-80 md:inline"> · {wallet.payerEmail}</span> : null}
+            {wallet.payerEmail ? <span className="hidden opacity-80 2xl:inline"> · {wallet.payerEmail}</span> : null}
           </span>
         </div>
         <button onClick={disconnect} disabled={busy} className="text-xs text-muted hover:text-bad">

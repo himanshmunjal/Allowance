@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Policy } from "@shared/types";
+import type { Policy, RuleSuggestion } from "@shared/types";
 import { api, money } from "./format";
 
 type PolicyResponse = { policy: Policy; sourceText: string };
@@ -13,6 +13,9 @@ export default function RulesPanel({ onChange }: { onChange: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [advice, setAdvice] = useState<RuleSuggestion[]>([]);
+  const [showAdvice, setShowAdvice] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     api<PolicyResponse>("/api/policy")
@@ -21,7 +24,32 @@ export default function RulesPanel({ onChange }: { onChange: () => void }) {
         setText(r.sourceText);
       })
       .catch((err) => setError(err.message));
+    loadAdvice();
   }, []);
+
+  // Rule advisor (D-068). Optional: if it can't load, the panel just doesn't show it.
+  function loadAdvice() {
+    api<{ suggestions: RuleSuggestion[] }>("/api/policy/suggestions")
+      .then((r) => setAdvice(r.suggestions))
+      .catch(() => setAdvice([]));
+  }
+
+  async function applySuggestion(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ policy: Policy; sourceText: string }>(`/api/policy/suggestions/${encodeURIComponent(id)}/apply`, { method: "POST" });
+      setPolicy(r.policy);
+      setText(r.sourceText);
+      loadAdvice();
+      onChange();
+    } catch (err) {
+      setError((err as Error).message);
+      loadAdvice();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function apply() {
     setBusy(true);
@@ -72,14 +100,23 @@ export default function RulesPanel({ onChange }: { onChange: () => void }) {
             <button
               onClick={apply}
               disabled={busy || text.trim().length < 3}
-              className="flex items-center gap-1.5 rounded-lg bg-ai px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-ai px-3 py-1.5 text-xs font-medium text-on-accent hover:opacity-90 disabled:opacity-50"
             >
               <span>✦</span> {busy ? "Turning words into rules…" : "Update rules with AI"}
             </button>
           </div>
         </div>
       ) : (
-        text && <p className="mt-3 rounded-xl bg-panel-2 p-3 text-xs italic leading-relaxed text-muted">“{text}”</p>
+        text && (
+          <div className="mt-3 rounded-xl bg-panel-2 p-3 text-xs leading-relaxed">
+            <p className={`italic ${showAll ? "" : "line-clamp-2"}`}>“{text}”</p>
+            {text.length > 110 && (
+              <button onClick={() => setShowAll(!showAll)} aria-expanded={showAll} className="mt-1 font-medium text-brand hover:underline">
+                {showAll ? "Show less" : "Show all"}
+              </button>
+            )}
+          </div>
+        )
       )}
 
       {summary && (
@@ -89,6 +126,38 @@ export default function RulesPanel({ onChange }: { onChange: () => void }) {
         </p>
       )}
       {error && <p className="mt-3 text-xs text-bad">{error}</p>}
+
+      {advice.length > 0 && (
+        <div className="mt-3 rounded-xl border border-line text-xs">
+          <button onClick={() => setShowAdvice(!showAdvice)} aria-expanded={showAdvice} className="flex w-full items-center justify-between gap-3 p-3 text-left font-medium">
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden className="text-ai">✦</span>
+              {advice.length} suggested from your decisions
+            </span>
+            <span className="font-medium text-brand">{showAdvice ? "Hide" : "Review"}</span>
+          </button>
+          {showAdvice && (
+            <ul className="space-y-3 border-t border-line p-3">
+              {advice.map((s) => (
+                <li key={s.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium">{s.title}</span>
+                    <button
+                      onClick={() => applySuggestion(s.id)}
+                      disabled={busy}
+                      className="shrink-0 rounded-lg border border-line px-2 py-0.5 font-medium text-brand hover:bg-brand-soft disabled:opacity-50"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  <p className="mt-0.5 leading-relaxed text-muted">{s.evidence}</p>
+                  {s.explanation && <p className="mt-0.5 leading-relaxed text-muted">{s.explanation}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {policy && (
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
@@ -120,7 +189,7 @@ function Chip({ label, value, tone }: { label: string; value: string; tone?: "ok
   const cls = tone === "ok" ? "bg-ok-soft text-ok" : tone === "warn" ? "bg-warn-soft text-warn" : tone === "bad" ? "bg-bad-soft text-bad" : "bg-panel-2 text-ink";
   return (
     <span className={`rounded-lg px-2 py-1 ${cls}`}>
-      <span className="opacity-70">{label}:</span> <b className="font-medium">{value}</b>
+      {label}: <b className="font-semibold">{value}</b>
     </span>
   );
 }

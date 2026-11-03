@@ -5,9 +5,9 @@ import type { DecisionCheck, Transaction } from "@shared/types";
 // PayPal. The last step comes from the purchase's live status, so it updates as it's paid or refunded.
 
 const STYLE: Record<DecisionCheck["outcome"], { icon: string; dot: string; text: string }> = {
-  pass: { icon: "✓", dot: "bg-ok text-white", text: "text-ok" },
-  ask: { icon: "?", dot: "bg-warn text-white", text: "text-warn" },
-  block: { icon: "✕", dot: "bg-bad text-white", text: "text-bad" },
+  pass: { icon: "✓", dot: "bg-ok text-on-accent", text: "text-ok" },
+  ask: { icon: "?", dot: "bg-warn text-on-accent", text: "text-warn" },
+  block: { icon: "✕", dot: "bg-bad text-on-accent", text: "text-bad" },
   skip: { icon: "–", dot: "bg-panel-2 text-muted ring-1 ring-line", text: "text-muted" },
 };
 

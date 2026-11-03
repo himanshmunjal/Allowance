@@ -6,12 +6,22 @@ import { api, money, timeAgo } from "./format";
 
 // Your agents and their allowances (D-054). Each external agent has its own API key and limits
 // that sit on top of your rules: an agent can be stricter than your rules, never looser.
+// Children (D-061) work the same way, but log in themselves with a username and password you pick.
 
 const CATEGORIES = ["coffee", "groceries", "gifts", "electronics", "books", "clothing", "home", "other"] as const satisfies readonly Category[];
 
-type Draft = { name: string; weeklyBudget: string; autoPayLimit: string; allowedCategories: Category[]; alwaysAsk: boolean };
+type Draft = {
+  name: string;
+  weeklyBudget: string;
+  autoPayLimit: string;
+  allowedCategories: Category[];
+  alwaysAsk: boolean;
+  loginName: string;
+  password: string;
+};
 
-const emptyDraft: Draft = { name: "", weeklyBudget: "", autoPayLimit: "", allowedCategories: [], alwaysAsk: false };
+const emptyDraft: Draft = { name: "", weeklyBudget: "", autoPayLimit: "", allowedCategories: [], alwaysAsk: false, loginName: "", password: "" };
+const emptyChild: Draft = { ...emptyDraft, weeklyBudget: "20", autoPayLimit: "10" };
 
 const toDraft = (a: Agent): Draft => ({
   name: a.name,
@@ -19,6 +29,8 @@ const toDraft = (a: Agent): Draft => ({
   autoPayLimit: a.autoPayLimit === null ? "" : String(a.autoPayLimit),
   allowedCategories: a.allowedCategories,
   alwaysAsk: a.alwaysAsk,
+  loginName: a.loginName ?? "",
+  password: "",
 });
 
 const fromDraft = (d: Draft) => ({
@@ -32,8 +44,9 @@ const fromDraft = (d: Draft) => ({
 type Connect = { mcpUrl: string; apiUrl: string };
 
 export default function AgentsPanel({ agents, onChange }: { agents: Agent[]; onChange: () => void }) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<"agent" | "child" | null>(null);
   const [newKey, setNewKey] = useState<{ name: string; apiKey: string } | null>(null);
+  const [newChild, setNewChild] = useState<{ name: string; loginName: string } | null>(null);
   const [connect, setConnect] = useState<Connect | null>(null);
 
   useEffect(() => {
@@ -45,6 +58,18 @@ export default function AgentsPanel({ agents, onChange }: { agents: Agent[]; onC
   return (
     <div className="space-y-3 p-4">
       {newKey && <KeyReveal {...newKey} mcpUrl={connect?.mcpUrl ?? null} onDone={() => setNewKey(null)} />}
+      {newChild && (
+        <div className="rounded-xl border border-ok/40 bg-ok-soft p-3 text-xs">
+          <div className="font-semibold text-ok">{newChild.name} can log in now</div>
+          <p className="mt-0.5 text-muted">
+            On the login page, username <b className="font-mono text-ink">{newChild.loginName}</b> and the password you chose. Anything over their
+            limits comes to you to approve.
+          </p>
+          <button onClick={() => setNewChild(null)} className="mt-1.5 text-[11px] text-muted hover:text-ink">
+            Got it
+          </button>
+        </div>
+      )}
 
       {connect && (
         <div className="rounded-xl bg-panel-2 p-3 text-[11px]">
@@ -55,26 +80,52 @@ export default function AgentsPanel({ agents, onChange }: { agents: Agent[]; onC
         </div>
       )}
 
-      {creating ? (
+      {creating === "agent" ? (
         <AgentForm
           title="New agent"
           initial={emptyDraft}
           submitLabel="Create agent + key"
-          onCancel={() => setCreating(false)}
+          onCancel={() => setCreating(null)}
           onSubmit={async (d) => {
             const r = await api<{ agent: Agent; apiKey: string }>("/api/agents", { method: "POST", body: JSON.stringify(fromDraft(d)) });
-            setCreating(false);
+            setCreating(null);
             setNewKey({ name: r.agent.name, apiKey: r.apiKey });
             onChange();
           }}
         />
+      ) : creating === "child" ? (
+        <AgentForm
+          title="Add a child"
+          initial={emptyChild}
+          submitLabel="Add child"
+          child="new"
+          onCancel={() => setCreating(null)}
+          onSubmit={async (d) => {
+            const r = await api<{ agent: Agent }>("/api/agents/children", {
+              method: "POST",
+              body: JSON.stringify({ ...fromDraft(d), loginName: d.loginName.trim(), password: d.password }),
+            });
+            setCreating(null);
+            setNewChild({ name: r.agent.name, loginName: r.agent.loginName ?? d.loginName });
+            onChange();
+          }}
+        />
       ) : (
-        <button
-          onClick={() => setCreating(true)}
-          className="w-full rounded-xl border border-dashed border-line px-3 py-2.5 text-xs font-medium text-brand hover:border-brand hover:bg-brand-soft"
-        >
-          + New agent with its own allowance
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setCreating("agent")}
+            className="rounded-xl border border-dashed border-line px-3 py-2.5 text-xs font-medium text-brand hover:border-brand hover:bg-brand-soft"
+          >
+            + New AI agent
+          </button>
+          <button
+            onClick={() => setCreating("child")}
+            className="rounded-xl border border-dashed border-line px-3 py-2.5 text-xs font-medium text-brand hover:border-brand hover:bg-brand-soft"
+            title="Parental controls: your child logs in and shops within the allowance you set"
+          >
+            + Add a child
+          </button>
+        </div>
       )}
 
       {agents.map((a) => (
@@ -87,9 +138,11 @@ export default function AgentsPanel({ agents, onChange }: { agents: Agent[]; onC
 function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const paused = agent.status === "paused";
+  const child = agent.kind === "child";
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -111,6 +164,7 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
         initial={toDraft(agent)}
         submitLabel="Save allowance"
         lockName={agent.kind === "builtin"}
+        child={child ? "edit" : undefined}
         onCancel={() => setEditing(false)}
         onSubmit={async (d) => {
           await api(`/api/agents/${agent.id}`, { method: "PATCH", body: JSON.stringify(fromDraft(d)) });
@@ -126,8 +180,10 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
   return (
     <div className={`rounded-xl border border-line p-3 ${paused ? "bg-panel-2 opacity-80" : "bg-panel"}`}>
       <div className="flex items-start gap-2.5">
-        <span className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm ${agent.kind === "builtin" ? "bg-ai-soft text-ai" : "bg-brand-soft text-brand"}`}>
-          {agent.kind === "builtin" ? "✦" : "⌁"}
+        <span
+          className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm ${agent.kind === "builtin" ? "bg-ai-soft text-ai" : child ? "bg-warn-soft" : "bg-brand-soft text-brand"}`}
+        >
+          {agent.kind === "builtin" ? "✦" : child ? "🧒" : "⌁"}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -135,8 +191,8 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
             {paused && <span className="rounded-full bg-warn-soft px-1.5 py-0.5 text-[10px] font-medium text-warn">paused</span>}
           </div>
           <div className="text-[11px] text-muted">
-            {agent.kind === "builtin" ? "Chat on this dashboard" : `External · key …${agent.keyHint}`}
-            {agent.lastUsedAt && agent.kind === "external" ? ` · used ${timeAgo(agent.lastUsedAt)}` : agent.kind === "external" ? " · never used" : ""}
+            {agent.kind === "builtin" ? "Chat on this dashboard" : child ? `Child · logs in as ${agent.loginName}` : `External · key …${agent.keyHint}`}
+            {agent.kind === "builtin" ? "" : agent.lastUsedAt ? ` · ${child ? "last login" : "used"} ${timeAgo(agent.lastUsedAt)}` : child ? " · hasn't logged in yet" : " · never used"}
           </div>
         </div>
         <div className="text-right text-xs">
@@ -155,6 +211,7 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
         {agent.autoPayLimit !== null && <Tag tone="ok">auto-pay ≤ {money(agent.autoPayLimit)}</Tag>}
         {agent.allowedCategories.length > 0 && <Tag>only {agent.allowedCategories.join(", ")}</Tag>}
         {agent.alwaysAsk && <Tag tone="warn">always ask</Tag>}
+        {child && <Tag tone="warn">kid-safe: no alcohol, vaping, gambling, weapons</Tag>}
         {agent.weeklyBudget === null && agent.autoPayLimit === null && !agent.allowedCategories.length && !agent.alwaysAsk && (
           <Tag>no extra limits: your rules apply</Tag>
         )}
@@ -162,18 +219,24 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
 
       <div className="mt-2.5 flex items-center justify-end gap-1.5 text-[11px]">
         {error && <span className="mr-auto text-bad">{error}</span>}
-        {confirmRevoke ? (
+        {resetting ? (
+          <ResetPassword
+            name={agent.name}
+            onCancel={() => setResetting(false)}
+            onSave={(password) => run(() => api(`/api/agents/${agent.id}`, { method: "PATCH", body: JSON.stringify({ password }) })).then(() => setResetting(false))}
+          />
+        ) : confirmRevoke ? (
           <>
-            <span className="mr-auto text-bad">Revoke for good? The key stops working now.</span>
+            <span className="mr-auto text-bad">{child ? `Remove ${agent.name}? They can't log in any more.` : "Revoke for good? The key stops working now."}</span>
             <button onClick={() => setConfirmRevoke(false)} className="px-2 py-1 text-muted hover:text-ink">
               Keep
             </button>
             <button
               onClick={() => run(() => api(`/api/agents/${agent.id}`, { method: "DELETE" }))}
               disabled={busy}
-              className="rounded-lg bg-bad px-2 py-1 font-medium text-white disabled:opacity-50"
+              className="rounded-lg bg-bad px-2 py-1 font-medium text-on-accent disabled:opacity-50"
             >
-              Revoke
+              {child ? "Remove" : "Revoke"}
             </button>
           </>
         ) : (
@@ -181,7 +244,12 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
             <button onClick={() => setEditing(true)} className="rounded-lg px-2 py-1 text-brand hover:bg-brand-soft">
               Edit allowance
             </button>
-            {agent.kind === "external" && (
+            {child && (
+              <button onClick={() => setResetting(true)} className="rounded-lg px-2 py-1 text-muted hover:bg-panel-2 hover:text-ink">
+                Reset password
+              </button>
+            )}
+            {agent.kind !== "builtin" && (
               <>
                 <button
                   onClick={() =>
@@ -193,7 +261,7 @@ function AgentCard({ agent, onChange }: { agent: Agent; onChange: () => void }) 
                   {paused ? "▶ Resume" : "⏸ Pause"}
                 </button>
                 <button onClick={() => setConfirmRevoke(true)} className="rounded-lg px-2 py-1 text-muted hover:text-bad">
-                  Revoke
+                  {child ? "Remove" : "Revoke"}
                 </button>
               </>
             )}
@@ -209,6 +277,7 @@ function AgentForm({
   initial,
   submitLabel,
   lockName,
+  child,
   onSubmit,
   onCancel,
 }: {
@@ -216,6 +285,8 @@ function AgentForm({
   initial: Draft;
   submitLabel: string;
   lockName?: boolean;
+  /** "new" = also pick the child's username + password; "edit" = a child's allowance (always has a weekly limit). */
+  child?: "new" | "edit";
   onSubmit: (d: Draft) => Promise<void>;
   onCancel: () => void;
 }) {
@@ -246,13 +317,44 @@ function AgentForm({
       {!lockName && (
         <label className="block">
           <span className="text-muted">Name</span>
-          <input required minLength={2} maxLength={60} value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder="e.g. Grocery bot" className={input} />
+          <input required minLength={2} maxLength={60} value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} placeholder={child ? "e.g. Aarav" : "e.g. Grocery bot"} className={input} />
         </label>
+      )}
+      {child === "new" && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="text-muted">Username to log in</span>
+            <input
+              required
+              pattern="[A-Za-z0-9._\-]{3,30}"
+              title="3-30 letters, numbers, dots, dashes or underscores"
+              autoComplete="off"
+              value={d.loginName}
+              onChange={(e) => setD({ ...d, loginName: e.target.value })}
+              placeholder="e.g. aarav"
+              className={input}
+            />
+          </label>
+          <label className="block">
+            <span className="text-muted">Password</span>
+            <input required type="password" minLength={6} autoComplete="new-password" value={d.password} onChange={(e) => setD({ ...d, password: e.target.value })} placeholder="6+ characters" className={input} />
+          </label>
+        </div>
       )}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <label className="block">
           <span className="text-muted">Weekly allowance ($)</span>
-          <input type="number" min={0} step="0.01" inputMode="decimal" value={d.weeklyBudget} onChange={(e) => setD({ ...d, weeklyBudget: e.target.value })} placeholder="no limit" className={input} />
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            required={!!child}
+            value={d.weeklyBudget}
+            onChange={(e) => setD({ ...d, weeklyBudget: e.target.value })}
+            placeholder={child ? "required" : "no limit"}
+            className={input}
+          />
         </label>
         <label className="block">
           <span className="text-muted">Auto-pay up to ($)</span>
@@ -267,7 +369,7 @@ function AgentForm({
               type="button"
               key={c}
               onClick={() => toggle(c)}
-              className={`rounded-lg px-2 py-1 ${d.allowedCategories.includes(c) ? "bg-brand text-white" : "bg-panel-2 text-ink hover:bg-brand-soft"}`}
+              className={`rounded-lg px-2 py-1 ${d.allowedCategories.includes(c) ? "bg-brand text-on-accent" : "bg-panel-2 text-ink hover:bg-brand-soft"}`}
             >
               {c}
             </button>
@@ -276,15 +378,18 @@ function AgentForm({
       </div>
       <label className="mt-2 flex items-center gap-2">
         <input type="checkbox" checked={d.alwaysAsk} onChange={(e) => setD({ ...d, alwaysAsk: e.target.checked })} />
-        Always ask me before this agent pays
+        {child ? "Always ask me before they buy anything" : "Always ask me before this agent pays"}
       </label>
-      <p className="mt-2 text-[11px] text-muted">These limits add to your rules. They can only make things stricter, never looser.</p>
+      <p className="mt-2 text-[11px] text-muted">
+        These limits add to your rules. They can only make things stricter, never looser.
+        {child ? " Alcohol, vaping, gambling, weapons and adult items are always blocked for children." : ""}
+      </p>
       {error && <p className="mt-2 text-bad">{error}</p>}
       <div className="mt-2.5 flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="px-2.5 py-1.5 text-muted hover:text-ink">
           Cancel
         </button>
-        <button type="submit" disabled={busy} className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white hover:opacity-90 disabled:opacity-50">
+        <button type="submit" disabled={busy} className="rounded-lg bg-brand px-3 py-1.5 font-medium text-on-accent hover:opacity-90 disabled:opacity-50">
           {busy ? "Saving…" : submitLabel}
         </button>
       </div>
@@ -307,7 +412,7 @@ function KeyReveal({ name, apiKey, mcpUrl, onDone }: { name: string; apiKey: str
           onClick={() => {
             navigator.clipboard?.writeText(apiKey).then(() => setCopied(true));
           }}
-          className="rounded-lg bg-ok px-2.5 py-1.5 font-medium text-white"
+          className="rounded-lg bg-ok px-2.5 py-1.5 font-medium text-on-accent"
         >
           {copied ? "Copied ✓" : "Copy"}
         </button>
@@ -323,6 +428,36 @@ function KeyReveal({ name, apiKey, mcpUrl, onDone }: { name: string; apiKey: str
         I&apos;ve saved it
       </button>
     </div>
+  );
+}
+
+function ResetPassword({ name, onSave, onCancel }: { name: string; onSave: (password: string) => void; onCancel: () => void }) {
+  const [password, setPassword] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(password);
+      }}
+      className="flex w-full items-center gap-1.5"
+    >
+      <input
+        type="password"
+        required
+        minLength={6}
+        autoComplete="new-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={`New password for ${name}`}
+        className="min-w-0 flex-1 rounded-lg border border-line bg-panel-2 px-2 py-1 outline-none focus:border-brand"
+      />
+      <button type="button" onClick={onCancel} className="px-2 py-1 text-muted hover:text-ink">
+        Cancel
+      </button>
+      <button type="submit" className="rounded-lg bg-brand px-2 py-1 font-medium text-on-accent">
+        Save
+      </button>
+    </form>
   );
 }
 

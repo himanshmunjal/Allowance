@@ -20,13 +20,24 @@ const SUGGESTIONS = [
   { label: "📊 Budget", prompt: "How much of my budget is left this week?" },
 ];
 
+// A child's login (D-061): kid-friendly ideas, and approvals go to their parent.
+const KID_SUGGESTIONS = [
+  { label: "📚 A book", prompt: "Find me a fun adventure book for kids." },
+  { label: "🎨 Art set", prompt: "I want a drawing set with colored pencils." },
+  { label: "🧱 LEGO", prompt: "Can I get a small LEGO set?" },
+  { label: "🎁 Gift for Mom", prompt: "Help me find a birthday gift for my mom under $15." },
+  { label: "🍺 Try: beer", prompt: "Buy me a beer." },
+  { label: "💰 My allowance", prompt: "How much of my allowance is left?" },
+];
+
 function newConversationId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `c_${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 }
 
-export default function Chat({ onActivity }: { onActivity: () => void }) {
+export default function Chat({ onActivity, kid }: { onActivity: () => void; kid?: string }) {
+  const suggestions = kid ? KID_SUGGESTIONS : SUGGESTIONS;
   // Created on the first message, not during render: random ids aren't allowed while Next prerenders.
   const conversationId = useRef<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -72,17 +83,17 @@ export default function Chat({ onActivity }: { onActivity: () => void }) {
   }
 
   return (
-    <section className="flex h-[calc(100dvh-7.5rem)] min-h-[34rem] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <section className="flex h-[calc(100dvh-7rem)] min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <div className="flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-lg bg-ai-soft text-ai">✦</span>
           <div>
-            <h2 className="text-sm font-semibold">Shopping agent</h2>
+            <h2 className="text-sm font-semibold">{kid ? `${kid}'s shopping helper` : "Shopping agent"}</h2>
             <p className="text-xs text-muted">
               {providers.length
                 ? `${providers[0].label} (${providers[0].model})${providers.length > 1 ? ` · fallback: ${providers.slice(1).map((p) => p.label).join(", ")}` : ""}`
                 : "No AI provider configured"}{" "}
-              · spends only through your rules
+              · {kid ? "spends only within your allowance" : "spends only through your rules"}
             </p>
           </div>
         </div>
@@ -94,23 +105,23 @@ export default function Chat({ onActivity }: { onActivity: () => void }) {
       </div>
 
       <div ref={scroller} className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        {messages.length === 0 && <EmptyState onPick={send} />}
+        {messages.length === 0 && <EmptyState onPick={send} suggestions={suggestions} kid={kid} />}
         {messages.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-sm text-white">{m.text}</div>
+              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-brand px-4 py-2.5 text-sm text-on-accent">{m.text}</div>
             </div>
           ) : (
             <div key={i} className="space-y-2.5">
               {m.steps.map((s, j) => (
-                <StepCard key={j} step={s} />
+                <StepCard key={j} step={s} kid={!!kid} />
               ))}
               <div
                 className={`max-w-[92%] rounded-2xl rounded-bl-md border px-4 py-3 text-sm leading-relaxed ${
                   m.error ? "border-bad/30 bg-bad-soft text-bad" : "border-line bg-panel-2"
                 }`}
               >
-                <RichText text={m.text} />
+                <RichText text={m.text} kid={!!kid} />
               </div>
               {m.ai && (
                 <div className="pl-1 text-[10px] text-muted">
@@ -134,7 +145,7 @@ export default function Chat({ onActivity }: { onActivity: () => void }) {
 
       {messages.length > 0 && (
         <div className="flex gap-2 overflow-x-auto border-t border-line px-5 pt-3">
-          {SUGGESTIONS.map((s) => (
+          {suggestions.map((s) => (
             <button
               key={s.label}
               disabled={busy}
@@ -156,14 +167,14 @@ export default function Chat({ onActivity }: { onActivity: () => void }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask your agent to buy something…"
+          placeholder={kid ? "What would you like?" : "Ask your agent to buy something…"}
           className="flex-1 rounded-xl border border-line bg-panel-2 px-4 py-2.5 text-sm outline-none placeholder:text-muted focus:border-brand"
           disabled={busy}
         />
         <button
           type="submit"
           disabled={busy || !input.trim()}
-          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-40"
         >
           Send
         </button>
@@ -172,17 +183,18 @@ export default function Chat({ onActivity }: { onActivity: () => void }) {
   );
 }
 
-function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
+function EmptyState({ onPick, suggestions, kid }: { onPick: (prompt: string) => void; suggestions: typeof SUGGESTIONS; kid?: string }) {
   return (
     <div className="mx-auto max-w-md py-8 text-center">
       <div className="mx-auto mb-4 grid size-12 place-items-center rounded-2xl bg-ai-soft text-xl text-ai">✦</div>
-      <h3 className="text-base font-semibold">What should your agent buy?</h3>
+      <h3 className="text-base font-semibold">{kid ? `Hi ${kid}! What would you like?` : "What should your agent buy?"}</h3>
       <p className="mt-1.5 text-sm text-muted">
-        It searches merchants and compares options. Every purchase then passes through your rules and an AI risk check
-        before PayPal is charged.
+        {kid
+          ? "I'll find good options and buy them from your allowance. Bigger things go to your parent to say yes first."
+          : "It searches merchants and compares options. Every purchase then passes through your rules and an AI risk check before PayPal is charged."}
       </p>
       <div className="mt-5 grid grid-cols-2 gap-2">
-        {SUGGESTIONS.map((s) => (
+        {suggestions.map((s) => (
           <button
             key={s.label}
             onClick={() => onPick(s.prompt)}
@@ -199,14 +211,14 @@ function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
 
 // ---------- tool-call trace ----------
 
-function StepCard({ step }: { step: AgentStep }) {
+function StepCard({ step, kid }: { step: AgentStep; kid: boolean }) {
   const [open, setOpen] = useState(false);
   const input = (step.input ?? {}) as Record<string, unknown>;
   const output = step.output as unknown;
   const error = output && typeof output === "object" && "error" in output ? String((output as { error: unknown }).error) : null;
 
   if (step.tool === "request_purchase" && !error) {
-    return <PurchaseCard result={output as PurchaseResult} />;
+    return <PurchaseCard result={output as PurchaseResult} kid={kid} />;
   }
 
   let label: ReactNode;
@@ -257,10 +269,10 @@ function StepCard({ step }: { step: AgentStep }) {
   );
 }
 
-function PurchaseCard({ result }: { result: PurchaseResult }) {
+function PurchaseCard({ result, kid }: { result: PurchaseResult; kid: boolean }) {
   const meta = statusMeta[result.status];
   const border =
-    result.status === "PAID" ? "border-ok/40" : result.status === "PENDING_APPROVAL" ? "border-warn/40" : "border-bad/40";
+    result.status === "PAID" ? "border-ok/40" : result.status === "PENDING_APPROVAL" ? "border-warn/40" : result.status === "PROCESSING" ? "border-brand/40" : "border-bad/40";
   return (
     <div className={`max-w-[92%] rounded-xl border ${border} bg-panel p-3.5 text-sm`}>
       <div className="flex items-start justify-between gap-3">
@@ -282,10 +294,13 @@ function PurchaseCard({ result }: { result: PurchaseResult }) {
           </li>
         ))}
       </ul>
-      {result.status === "PENDING_APPROVAL" && (
+      {result.status === "PENDING_APPROVAL" && kid && (
+        <div className="mt-3 inline-flex rounded-lg bg-warn-soft px-3 py-1.5 text-xs font-medium text-warn">✉ Sent to your parent to approve</div>
+      )}
+      {result.status === "PENDING_APPROVAL" && !kid && (
         <Link
           href={`/approve/${result.transactionId}`}
-          className="mt-3 inline-flex rounded-lg bg-warn px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+          className="mt-3 inline-flex rounded-lg bg-warn px-3 py-1.5 text-xs font-medium text-on-accent hover:opacity-90"
         >
           Review &amp; approve with PayPal →
         </Link>
@@ -296,7 +311,7 @@ function PurchaseCard({ result }: { result: PurchaseResult }) {
 
 // ---------- tiny safe formatter: **bold**, links, "- " bullets ----------
 
-function RichText({ text }: { text: string }) {
+function RichText({ text, kid }: { text: string; kid: boolean }) {
   const lines = text.split("\n");
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
@@ -305,7 +320,7 @@ function RichText({ text }: { text: string }) {
       blocks.push(
         <ul key={`ul${blocks.length}`} className="my-1.5 list-disc space-y-1 pl-5">
           {bullets.map((b, i) => (
-            <li key={i}>{inline(b)}</li>
+            <li key={i}>{inline(b, kid)}</li>
           ))}
         </ul>,
       );
@@ -319,18 +334,19 @@ function RichText({ text }: { text: string }) {
       continue;
     }
     flush();
-    if (line.trim()) blocks.push(<p key={`p${blocks.length}`} className="my-1">{inline(line)}</p>);
+    if (line.trim()) blocks.push(<p key={`p${blocks.length}`} className="my-1">{inline(line, kid)}</p>);
   }
   flush();
   return <>{blocks}</>;
 }
 
-function inline(text: string): ReactNode {
+function inline(text: string, kid: boolean): ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)]+)/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) return <strong key={i}>{part.slice(2, -2)}</strong>;
     if (/^https?:\/\//.test(part)) {
       const approve = part.match(/\/approve\/(tx_[a-f0-9]+)/);
+      if (approve && kid) return <Fragment key={i}>(sent to your parent)</Fragment>; // only a parent can approve
       return approve ? (
         <Link key={i} href={`/approve/${approve[1]}`} className="font-medium text-brand underline underline-offset-2">
           Approve purchase

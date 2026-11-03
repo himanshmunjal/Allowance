@@ -19,12 +19,12 @@ export default function Ledger({
   onChange: () => void;
 }) {
   const [tab, setTab] = useState<"ledger" | "agents" | "audit">("ledger");
-  const label = { ledger: `Purchases (${transactions.length})`, agents: `Agents (${agents.length})`, audit: "Audit trail" };
+  const label = { ledger: `Purchases (${transactions.length})`, agents: `Agents & kids (${agents.length})`, audit: "Audit trail" };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
+    <section className="flex h-[32rem] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
       <div className="flex items-center justify-between border-b border-line px-5 pt-3">
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 whitespace-nowrap text-sm">
           {(["ledger", "agents", "audit"] as const).map((t) => (
             <button
               key={t}
@@ -35,7 +35,7 @@ export default function Ledger({
             </button>
           ))}
         </div>
-        <span className="flex items-center gap-1.5 pb-2.5 text-[11px] text-muted">
+        <span className="hidden items-center gap-1.5 pb-2.5 text-[11px] text-muted sm:flex">
           <span className="size-1.5 animate-pulse rounded-full bg-ok" /> live
         </span>
       </div>
@@ -150,7 +150,7 @@ function Row({ tx, onChange }: { tx: Transaction; onChange: () => void }) {
             </button>
           )}
           {tx.status === "PENDING_APPROVAL" && (
-            <Link href={`/approve/${tx.id}`} className="rounded-lg bg-warn px-2.5 py-1 text-xs font-medium text-white hover:opacity-90">
+            <Link href={`/approve/${tx.id}`} className="rounded-lg bg-warn px-2.5 py-1 text-xs font-medium text-on-accent hover:opacity-90">
               Review &amp; approve →
             </Link>
           )}

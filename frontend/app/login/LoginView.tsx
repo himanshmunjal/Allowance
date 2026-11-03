@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { api } from "@/app/components/format";
+import { TryDemoButton } from "@/app/components/Landing";
 
 export default function LoginView() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function LoginView() {
     <div className="grid min-h-dvh place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-2.5">
-          <span className="grid size-10 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-white">A</span>
+          <span className="grid size-10 place-items-center rounded-xl bg-brand-ink text-lg font-bold text-on-accent">A</span>
           <div className="leading-tight">
             <div className="text-lg font-semibold">Allowance</div>
             <div className="text-xs text-muted">AI agents pay with PayPal, within your rules</div>
@@ -45,17 +46,18 @@ export default function LoginView() {
           <h1 className="text-base font-semibold">{mode === "login" ? "Log in" : "Create your account"}</h1>
           <p className="mt-1 text-xs text-muted">
             {mode === "login"
-              ? "Your rules, agents and saved PayPal are private to your account."
+              ? "Parents log in with their email; kids with the username their parent made for them."
               : "Each account has its own rules, agents, ledger and PayPal wallet."}
           </p>
 
           <label className="mt-5 block text-xs font-medium" htmlFor="email">
-            Email
+            {mode === "login" ? "Email, or a child's username" : "Email"}
           </label>
           <input
             id="email"
-            type="email"
-            autoComplete="email"
+            type={mode === "login" ? "text" : "email"}
+            autoComplete={mode === "login" ? "username" : "email"}
+            autoCapitalize="none"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -82,7 +84,7 @@ export default function LoginView() {
           <button
             type="submit"
             disabled={busy}
-            className="mt-5 w-full rounded-xl bg-brand-ink px-3 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+            className="mt-5 w-full rounded-xl bg-brand-ink px-3 py-2.5 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-60"
           >
             {busy ? "One moment…" : mode === "login" ? "Log in" : "Create account"}
           </button>
@@ -101,6 +103,10 @@ export default function LoginView() {
             </button>
           </p>
         </form>
+
+        <div className="mt-4 text-center">
+          <TryDemoButton label="Or try the demo, no sign-up" className="text-xs font-medium text-brand hover:underline disabled:opacity-60" />
+        </div>
       </div>
     </div>
   );

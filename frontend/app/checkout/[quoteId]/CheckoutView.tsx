@@ -56,6 +56,7 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
   }
 
   const total = quote ? Math.round(quote.product.price * quantity * 100) / 100 : 0;
+  const kidOnly = quote?.agents.length === 1 && quote.agents[0].kind === "child"; // a child checks out as themselves (D-061)
   const tx = done?.transaction;
   const meta = tx ? statusMeta[tx.status] : null;
 
@@ -64,7 +65,7 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
       <div className="mx-auto max-w-lg">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="grid size-8 place-items-center rounded-lg bg-brand-ink text-sm font-bold text-white">A</span>
+            <span className="grid size-8 place-items-center rounded-lg bg-brand-ink text-sm font-bold text-on-accent">A</span>
             <span className="font-semibold">Allowance Checkout</span>
           </div>
           {returnTo && (
@@ -102,8 +103,10 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
               {!done ? (
                 <div className="space-y-4 p-6">
                   <fieldset>
-                    <legend className="text-xs font-medium">Which agent is buying?</legend>
-                    <p className="text-[11px] text-muted">Allowance applies your rules and this agent&apos;s own allowance.</p>
+                    <legend className="text-xs font-medium">{kidOnly ? "Buying with your allowance" : "Who is buying?"}</legend>
+                    <p className="text-[11px] text-muted">
+                      {kidOnly ? "Your parent's rules apply. Bigger things go to them to approve." : "Allowance applies your rules and this agent's (or child's) own allowance."}
+                    </p>
                     <div className="mt-2 space-y-1.5">
                       {quote.agents.map((a) => (
                         <label
@@ -145,7 +148,7 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
                   <button
                     onClick={pay}
                     disabled={busy || !agentId || intent.trim().length < 3}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-4 py-2.5 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-60"
                   >
                     {busy ? "Checking your rules…" : `Pay ${money(total)} with Allowance`}
                   </button>
@@ -156,17 +159,17 @@ export default function CheckoutView({ quoteId }: { quoteId: string }) {
                   {meta && tx && (
                     <div className="mb-4 flex items-center justify-between">
                       <span className="text-sm font-medium">
-                        {tx.status === "PAID" ? "Paid" : tx.status === "PENDING_APPROVAL" ? "Needs your approval" : tx.status === "BLOCKED" ? "Declined by your rules" : meta.label}
+                        {tx.status === "PAID" ? "Paid" : tx.status === "PENDING_APPROVAL" ? (kidOnly ? "Sent to your parent to approve" : "Needs your approval") : tx.status === "BLOCKED" ? "Declined by your rules" : meta.label}
                       </span>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.className}`}>{meta.label}</span>
                     </div>
                   )}
                   {tx && <DecisionTimeline tx={tx} />}
                   <div className="mt-5 flex flex-col gap-2">
-                    {done.result.status === "PENDING_APPROVAL" && (
+                    {done.result.status === "PENDING_APPROVAL" && !kidOnly && (
                       <Link
                         href={`/approve/${done.result.transactionId}${returnTo ? `?return=${encodeURIComponent(returnTo)}` : ""}`}
-                        className="rounded-xl bg-warn px-4 py-2.5 text-center text-sm font-semibold text-white hover:opacity-90"
+                        className="rounded-xl bg-warn px-4 py-2.5 text-center text-sm font-semibold text-on-accent hover:opacity-90"
                       >
                         Review &amp; approve in PayPal →
                       </Link>
