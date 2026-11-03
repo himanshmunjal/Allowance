@@ -1,4 +1,8 @@
 # Render Blueprint: New → Blueprint → select this repo. Creates a PostgreSQL database and two web services.
+#
+# No rootDir on either service: this is an npm workspace with one node_modules at the repo root, and
+# Render hides everything outside a service's rootDir at build time and at runtime (D-069).
+#
 # After the first deploy, set:
 #   backend  APP_URL      = the frontend's URL   (https://allowance-frontend-xxxx.onrender.com)
 #   frontend BACKEND_URL  = the backend's URL    (https://allowance-backend-xxxx.onrender.com)
@@ -8,10 +12,14 @@ services:
     name: allowance-backend
     runtime: node
     plan: free
-    rootDir: backend
-    buildCommand: cd .. && npm ci && npm run build -w backend
-    startCommand: npm start
+    # --include=dev: the build needs tsup and TypeScript even when NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npm run build -w backend
+    startCommand: npm run start -w backend
     healthCheckPath: /health
+    buildFilter:
+      paths:
+        - backend/**
+        - package-lock.json
     envVars:
       - key: NODE_VERSION
         value: "22.16.0"
@@ -22,6 +30,11 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      # Optional: a sandbox vault id, so demo visitors see auto-pay with no PayPal login (D-067).
+      - key: DEMO_VAULT_ID
+        sync: false
+      - key: DEMO_PAYER_EMAIL
         sync: false
       - key: GEMINI_API_KEY
         sync: false
@@ -44,9 +57,13 @@ services:
     name: allowance-frontend
     runtime: node
     plan: free
-    rootDir: frontend
-    buildCommand: cd .. && npm ci && npm run build -w frontend
-    startCommand: npm start
+    buildCommand: npm ci --include=dev && npm run build -w frontend
+    startCommand: npm run start -w frontend
+    buildFilter:
+      paths:
+        - frontend/**
+        - backend/src/shared/**
+        - package-lock.json
     envVars:
       - key: NODE_VERSION
         value: "22.16.0"

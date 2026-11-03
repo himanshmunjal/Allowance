@@ -1,0 +1,22 @@
+# A local PostgreSQL, so running Allowance doesn't need one installed: `docker compose up -d`
+# Then in backend/.env: DATABASE_URL=postgres://postgres:postgres@localhost:5433/allowance
+# Local development only: the password is not a secret, and the port is bound to this machine.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: allowance
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - allowance-pg:/var/lib/postgresql/data
+      - ./docker/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  allowance-pg:

@@ -14,6 +14,8 @@
     "start": "concurrently -n backend,frontend -c magenta,cyan \"npm run start -w backend\" \"npm run start -w frontend\"",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
     "lint": "npm run lint -w frontend",
+    "test": "npm test -w backend",
+    "redteam": "npm run redteam -w backend",
     "check-ai": "npm run check-ai -w backend",
     "mcp": "npm run mcp -w backend",
     "mcp:demo": "npm run mcp:demo -w backend",
