@@ -18,6 +18,7 @@ import { storeRoutes } from "./routes/store";
 import { metaRoutes } from "./routes/meta";
 import { policyRoutes } from "./routes/policy";
 import { walletRoutes } from "./routes/wallet";
+import { notifyRoutes } from "./routes/notify";
 import { webhookRoutes } from "./routes/webhook";
 
 // The Allowance API. The frontend proxies /api/* here (frontend/next.config.ts), so browsers
@@ -41,6 +42,7 @@ app.route("/api/policy", policyRoutes);
 app.route("/api/transactions", ledgerRoutes);
 app.route("/api/approvals", approvalRoutes);
 app.route("/api/wallet", walletRoutes);
+app.route("/api/notify", notifyRoutes); // approval alerts settings (session, parents only)
 app.route("/api/paypal/webhook", webhookRoutes);
 app.route("/api/agent", agentRoutes); // used BY agents (agent API key)
 app.route("/api/merchant", merchantRoutes);

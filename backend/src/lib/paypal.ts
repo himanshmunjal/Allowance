@@ -226,6 +226,7 @@ export function refundCapture(captureId: string, amount: number, currency: strin
     requestId: `${txId}-refund`,
     body: {
       amount: money(amount, currency),
+      custom_id: txId, // RefundRequest.customId: lets this refund be matched to our ledger in PayPal reports
       note_to_payer: "Refunded from your Allowance dashboard",
     },
   });

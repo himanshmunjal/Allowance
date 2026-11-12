@@ -66,6 +66,12 @@ export const config = {
 
   // One-click demo accounts (D-067). DEMO_MODE: unset = on, but only against the PayPal sandbox;
   // "off" disables; "on" also allows a non-sandbox PayPal base (a local mock, in tests).
+  // Approval alerts (D-075). Off by default: alerts may only go to public https addresses. "on" also allows http and
+  // local addresses, for development and tests.
+  notify: {
+    allowPrivate: () => optional("NOTIFY_ALLOW_PRIVATE") === "on",
+  },
+
   demo: {
     enabled: () => optional("DEMO_MODE", "auto"),
     /** A sandbox vault id every demo account pays with, so judges see auto-pay without a PayPal login. */

@@ -19,6 +19,7 @@ Allowance is a trust layer between any AI agent and your PayPal. You write rules
 - **Pay with Allowance.** A demo store shows how a merchant integrates: the store sets the price, Allowance decides.
 - **Parental controls.** A child is an allowance holder with their own login. Anything over their limit goes to the parent, and age-restricted goods are always blocked.
 - **Spending Explorer.** The full ledger on AG Grid. Ask it a question in English, and check every row against PayPal's own record.
+- **Approval alerts.** Paste a Zapier or Slack webhook and get pinged when a purchase needs you or a payment fails, so a human in the loop doesn't have to keep the dashboard open.
 - **Rule advisor.** Your approvals and rejections become suggested rules, and nothing changes until you click Apply.
 
 ## How we built it
@@ -35,15 +36,18 @@ Next.js and a Hono API in TypeScript, with PostgreSQL. A per-user database lock 
 |---|---|
 | Google Gemini (default), Groq, Anthropic Claude | Any one is enough, with automatic fallback. Shopping agent with tool use, risk review, plain-English rules to a typed policy, English questions to a grid view, and explaining rule suggestions |
 | Model Context Protocol | Remote (HTTP) and local (stdio) server, so any agent can shop through Allowance |
-| AG Grid | The Spending Explorer: filters, sorting, pagination and CSV, driven by an AI question box, with a live PayPal column |
+| AG Grid + AG Charts | The Spending Explorer: filters, sorting, pagination and CSV, driven by an AI question box, with a live PayPal column. An AG Charts view of the last 14 days follows whatever the grid is showing |
 | Channel3 | Live product search across real retailers, with prices re-checked at purchase |
 | Render | Blueprint deploy of two services and PostgreSQL |
-| Postman / APIMatic | `docs/openapi.yaml` can be imported into either to explore the API or generate SDKs |
+| Postman | A collection generated from the OpenAPI spec, with auth, examples and tests; it runs green under `newman` (9 requests, 19 assertions) |
+| Zapier | Approval alerts post JSON to a webhook the owner sets (a Zapier Catch Hook works); verified against a local receiver, not a live Zapier account |
+| APIMatic Context Plugin | Used in Claude Code to check our PayPal calls against the PayPal Server SDK docs. It found a refund bug (a `FAILED` or `CANCELLED` refund was marked refunded), now fixed with tests. The log of questions, answers and changes is `docs/APIMATIC.md` |
+| APIMatic spec audit | `docs/openapi.yaml` scored 99/100 in APIMatic's spec audit (it was 68 before the rewrite). APIMatic set up a documentation portal project from it in `src/`, with SDK targets for C#, TypeScript and Python and a Context Plugin tab |
 | Claude Code | AI coding assistant used during development |
 
 ## What's next
 
-Approval alerts by Zapier or push, multiparty onboarding so real stores get paid directly, and signed receipts a store can verify.
+Push notifications and email on top of the webhook alerts, multiparty onboarding so real stores get paid directly, and signed receipts a store can verify.
 
 ## Links
 

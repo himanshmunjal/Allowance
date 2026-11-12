@@ -1,0 +1,1465 @@
+{
+  "item": [
+    {
+      "name": "Agent",
+      "description": "Used by an AI agent, with its own key from the dashboard",
+      "item": [
+        {
+          "id": "357d71a0-9e44-4443-9d87-4eac56536f13",
+          "name": "Search the catalog",
+          "request": {
+            "name": "Search the catalog",
+            "description": {
+              "content": "Live retailer products via Channel3 when configured, otherwise the demo catalog. Prices are re-checked at purchase.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "agent",
+                "search"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"coffee beans\",\n  \"maxPrice\": 25\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "id": "e2c8b616-53aa-4f4d-a5e4-0bc378f1d0f7",
+              "name": "Matching products",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "search"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"query\": \"<string>\",\n  \"maxPrice\": \"<number>\",\n  \"category\": \"electronics\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"products\": [\n    {\n      \"id\": \"<string>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<number>\",\n      \"category\": \"<string>\",\n      \"rating\": \"<number>\",\n      \"deliveryDays\": \"<integer>\",\n      \"merchantName\": \"<string>\",\n      \"merchantVerified\": \"<boolean>\",\n      \"source\": \"demo\",\n      \"url\": \"<string>\"\n    },\n    {\n      \"id\": \"<string>\",\n      \"name\": \"<string>\",\n      \"description\": \"<string>\",\n      \"price\": \"<number>\",\n      \"category\": \"<string>\",\n      \"rating\": \"<number>\",\n      \"deliveryDays\": \"<integer>\",\n      \"merchantName\": \"<string>\",\n      \"merchantVerified\": \"<boolean>\",\n      \"source\": \"demo\",\n      \"url\": \"<string>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "2b6df954-af89-4a5e-b1d2-269bb6f525a3",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "search"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"query\": \"<string>\",\n  \"maxPrice\": \"<number>\",\n  \"category\": \"electronics\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "b3f7acdd-b96b-4069-a0b4-2c2d2a7c0e64",
+          "name": "The owner's rules and budget, and this agent's allowance",
+          "request": {
+            "name": "The owner's rules and budget, and this agent's allowance",
+            "description": {},
+            "url": {
+              "path": [
+                "api",
+                "agent",
+                "status"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "body": {}
+          },
+          "response": [
+            {
+              "id": "1d964d93-f4aa-470c-8f74-370412efe1a3",
+              "name": "Spending status",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "status"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"rules\": \"<string>\",\n  \"autoPay\": \"<string>\",\n  \"agent\": {\n    \"name\": \"<string>\",\n    \"status\": \"paused\",\n    \"allowance\": \"<string>\",\n    \"spentThisWeek\": \"<number>\",\n    \"remaining\": \"<number>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "e8c6271f-e502-4302-9aad-8378f5382e65",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "status"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "33c48ebf-82b5-49a2-9341-fcdd6e579a7e",
+          "name": "Ask to buy something",
+          "request": {
+            "name": "Ask to buy something",
+            "description": {
+              "content": "Runs the full pipeline: server-side price, the owner's rules, this agent's allowance, prompt-injection screen,\nretry and split guard, AI risk check, a final check under a database lock, then PayPal. There is deliberately no\nprice field: anything like one is ignored.\n",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "agent",
+                "purchase"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"p_beans_ethiopia\",\n  \"quantity\": 1,\n  \"intent\": \"Buy me fruity coffee beans\",\n  \"reason\": \"Light roast with citrus notes from a verified roaster\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "id": "21a01f28-48c5-4882-b38a-065abbd3b191",
+              "name": "The decision. A BLOCKED purchase is a successful response, not an error.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchase"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"reason\": \"<string>\",\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"status\": \"PAID\",\n  \"transactionId\": \"<string>\",\n  \"title\": \"<string>\",\n  \"merchant\": \"<string>\",\n  \"amount\": \"<number>\",\n  \"currency\": \"<string>\",\n  \"reasons\": [\n    \"<string>\",\n    \"<string>\"\n  ],\n  \"approvalUrl\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "12ad29bb-a9ba-49cc-9f02-668701b28469",
+              "name": "The request can't be processed",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchase"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"reason\": \"<string>\",\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "5b7d6416-d61b-4e2c-a2fa-5766473691e6",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchase"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"<string>\",\n  \"intent\": \"<string>\",\n  \"reason\": \"<string>\",\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"returns a decision\", () => pm.expect(pm.response.code).to.equal(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"has a status\", () => pm.expect(body.status).to.be.a(\"string\"));",
+                  "if (body.transactionId) pm.collectionVariables.set(\"transactionId\", body.transactionId);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "5bfb8fb2-e6fd-47b2-a1ca-f6e351d294cc",
+          "name": "Cancel this agent's own request while it waits for approval",
+          "request": {
+            "name": "Cancel this agent's own request while it waits for approval",
+            "description": {},
+            "url": {
+              "path": [
+                "api",
+                "agent",
+                "purchases",
+                "{{transactionId}}",
+                "withdraw"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {}
+          },
+          "response": [
+            {
+              "id": "67b7df26-fef7-4377-b4b0-a910e6619237",
+              "name": "Withdrawn",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchases",
+                    ":id",
+                    "withdraw"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) ",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<string>",
+                      "key": "id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"id\": \"<string>\",\n  \"status\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "6b3cf440-7fef-40f3-8b77-f1fe591569e1",
+              "name": "The request can't be processed",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchases",
+                    ":id",
+                    "withdraw"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) ",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<string>",
+                      "key": "id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {}
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "e0a6ace5-ad23-46cb-855d-260c5a851002",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "purchases",
+                    ":id",
+                    "withdraw"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) ",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<string>",
+                      "key": "id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {}
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "bb522601-cee8-41f8-9324-b5bd3865e472",
+          "name": "This agent's recent purchases, and why each was decided that way",
+          "request": {
+            "name": "This agent's recent purchases, and why each was decided that way",
+            "description": {},
+            "url": {
+              "path": [
+                "api",
+                "agent",
+                "transactions"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "body": {}
+          },
+          "response": [
+            {
+              "id": "f4701fe4-649b-4f53-91ac-8a7a85512bdd",
+              "name": "Up to 20 purchases, newest first",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "transactions"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"transactions\": [\n    {\n      \"id\": \"<string>\",\n      \"status\": \"FAILED\",\n      \"item\": \"<string>\",\n      \"amount\": \"<number>\",\n      \"merchant\": \"<string>\",\n      \"reasons\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"createdAt\": \"<dateTime>\"\n    },\n    {\n      \"id\": \"<string>\",\n      \"status\": \"PENDING_APPROVAL\",\n      \"item\": \"<string>\",\n      \"amount\": \"<number>\",\n      \"merchant\": \"<string>\",\n      \"reasons\": [\n        \"<string>\",\n        \"<string>\"\n      ],\n      \"createdAt\": \"<dateTime>\"\n    }\n  ]\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "94e7c5db-eea5-4abd-9fbe-cf41f3114e8d",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "agent",
+                    "transactions"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{agentKey}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Merchant",
+      "description": "Used by a store, with MERCHANT_API_KEY",
+      "item": [
+        {
+          "id": "5234aa54-41e4-42e4-b544-4617daf18fe6",
+          "name": "State an item and price for an agent to buy",
+          "request": {
+            "name": "State an item and price for an agent to buy",
+            "description": {
+              "content": "Valid for 24 hours. The agent passes the returned quoteId as productId, and can't change the price.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "api",
+                "merchant",
+                "quotes"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant\": \"shop.example.com\",\n  \"item\": \"Yoga mat\",\n  \"price\": 36,\n  \"category\": \"other\"\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "id": "11e973fe-29aa-4c32-81e5-0e4c1245ba07",
+              "name": "Quote created",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "merchant",
+                    "quotes"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"merchant\": \"<string>\",\n  \"item\": \"<string>\",\n  \"price\": \"<number>\",\n  \"category\": \"other\",\n  \"description\": \"<string>\",\n  \"url\": \"<uri>\",\n  \"sellerVerified\": true,\n  \"rating\": \"<number>\",\n  \"deliveryDays\": \"<integer>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"expiresAt\": \"<dateTime>\",\n  \"item\": \"<string>\",\n  \"merchant\": \"<string>\",\n  \"price\": \"<number>\",\n  \"quoteId\": \"<string>\",\n  \"category\": \"other\",\n  \"description\": \"<string>\",\n  \"url\": \"<uri>\",\n  \"sellerVerified\": true,\n  \"rating\": \"<number>\",\n  \"deliveryDays\": \"<integer>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "2c2ba2db-b6e7-4518-9537-175fc0415a7d",
+              "name": "The request can't be processed",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "merchant",
+                    "quotes"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"merchant\": \"<string>\",\n  \"item\": \"<string>\",\n  \"price\": \"<number>\",\n  \"category\": \"other\",\n  \"description\": \"<string>\",\n  \"url\": \"<uri>\",\n  \"sellerVerified\": true,\n  \"rating\": \"<number>\",\n  \"deliveryDays\": \"<integer>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "f2d394d6-6c6c-4077-9884-b7634c76989e",
+              "name": "Missing, wrong or revoked key",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "merchant",
+                    "quotes"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: bearer",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "Bearer <token>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"merchant\": \"<string>\",\n  \"item\": \"<string>\",\n  \"price\": \"<number>\",\n  \"category\": \"other\",\n  \"description\": \"<string>\",\n  \"url\": \"<uri>\",\n  \"sellerVerified\": true,\n  \"rating\": \"<number>\",\n  \"deliveryDays\": \"<integer>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"error\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"quote created\", () => pm.expect(pm.response.code).to.equal(201));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{merchantKey}}",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Store",
+      "description": "The Brew & Co. demo store (public)",
+      "item": [
+        {
+          "id": "abf2b71c-f0a9-4233-9a0b-3d84cb344b37",
+          "name": "The demo store's products",
+          "request": {
+            "name": "The demo store's products",
+            "description": {},
+            "url": {
+              "path": [
+                "api",
+                "store",
+                "products"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET",
+            "body": {}
+          },
+          "response": [
+            {
+              "id": "71991c05-0c5e-4f01-8966-8bbe4e54ba02",
+              "name": "Store name and products",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "store",
+                    "products"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "method": "GET",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "cookie": [],
+              "_postman_previewlanguage": "text"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "ea7f90fc-0815-4186-ae93-63a227f99f89",
+          "name": "Price an order and get a \"Pay with Allowance\" link",
+          "request": {
+            "name": "Price an order and get a \"Pay with Allowance\" link",
+            "description": {},
+            "url": {
+              "path": [
+                "api",
+                "store",
+                "checkout"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"bc_house_blend\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "id": "cec9b4c3-4052-4d3f-9bad-fd91d3e47079",
+              "name": "A quote id and the checkout page to send the shopper to",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "store",
+                    "checkout"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"<string>\",\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"quoteId\": \"<string>\",\n  \"quantity\": \"<integer>\",\n  \"checkoutUrl\": \"<string>\"\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "6275834f-8680-4a59-a182-05f735208833",
+              "name": "Unknown product",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "api",
+                    "store",
+                    "checkout"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"productId\": \"<string>\",\n  \"quantity\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "header": [],
+              "cookie": [],
+              "_postman_previewlanguage": "text"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"not rejected for auth\", () => pm.expect(pm.response.code).to.not.equal(401));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));",
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));",
+                  "if (pm.response.code === 200) pm.collectionVariables.set(\"quoteId\", pm.response.json().quoteId);"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "name": "What Allowance decided about an order",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/store/orders/{{quoteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "store",
+                "orders",
+                "{{quoteId}}"
+              ]
+            },
+            "description": "The store's view of its order. Run \"Price an order\" first: it saves quoteId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"ok\", () => pm.expect(pm.response.code).to.equal(200));",
+                  "pm.test(\"has a store name\", () => pm.expect(pm.response.json().store).to.be.a(\"string\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "auth": {
+        "type": "noauth"
+      }
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000"
+    },
+    {
+      "key": "agentKey",
+      "value": ""
+    },
+    {
+      "key": "merchantKey",
+      "value": ""
+    },
+    {
+      "key": "transactionId",
+      "value": ""
+    },
+    {
+      "key": "quoteId",
+      "value": ""
+    }
+  ],
+  "info": {
+    "_postman_id": "157b2b96-83a8-4a37-af68-588844fca5f1",
+    "name": "Allowance Agent & Merchant API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from docs/openapi.yaml. Set agentKey (an agent's key from the Allowance dashboard) and merchantKey (MERCHANT_API_KEY) in the collection variables or the environment."
+  }
+}

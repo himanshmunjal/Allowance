@@ -1,13 +1,16 @@
 import { FakePayPal, closeDb } from "./helpers";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { app } from "../src/app";
 import { createAgent, ensureBuiltinAgent, type AgentContext } from "../src/lib/agents";
 import { signUp } from "../src/lib/auth";
 import { getTransaction, query, queryOne } from "../src/lib/db";
 import { DEFAULT_POLICY, savePolicy } from "../src/lib/policy";
-import { recoverStuckPayments, requestPurchase } from "../src/lib/purchase";
+import { getAlertSettings, setAlertUrl } from "../src/lib/notify";
+import { recoverStuckPayments, refundPurchase, requestPurchase } from "../src/lib/purchase";
 import { assessRisk } from "../src/lib/risk";
 import { getVaultId, setWalletConnected } from "../src/lib/wallet";
 
@@ -107,13 +110,88 @@ describe("payments when the network misbehaves", () => {
     await query("DELETE FROM transactions WHERE id = $1", [r.transactionId]); // don't leave it for later sweeps
   });
 
-  it("a definite decline is FAILED, and isn't retried", async () => {
+  it("a definite decline asks the owner instead of failing, and isn't retried", async () => {
     const { chat } = await account();
     paypal.faults = ["declined"];
     const r = await buy(chat);
-    assert.equal(r.status, "FAILED");
+    assert.equal(r.status, "PENDING_APPROVAL");
+    assert.match(r.reasons[0], /declined the charge.*Nothing was charged/);
+    assert.ok(r.approvalUrl);
     assert.equal(orderCalls().length, 1);
     assert.equal(paypal.charges, 0);
+  });
+
+  it("a revoked saved PayPal falls back to approval and turns auto-pay off", async () => {
+    const { user, chat } = await account();
+    paypal.faults = ["token-gone"];
+    const r = await buy(chat);
+    assert.equal(r.status, "PENDING_APPROVAL");
+    assert.match(r.reasons[0], /can no longer be charged/);
+    assert.equal(paypal.charges, 0);
+    assert.equal(await getVaultId(user.id), null, "auto-pay is off until it is reconnected");
+    const tx = await getTransaction(r.transactionId);
+    assert.ok(tx?.checks.some((c) => c.step === "wallet" && c.outcome === "ask"));
+    // The next purchase doesn't even try: no wallet, so it asks.
+    paypal.reset();
+    const next = await buy(chat, "p_oat_milk");
+    assert.equal(next.status, "PENDING_APPROVAL");
+    assert.match(next.reasons.join(" "), /No PayPal wallet connected/);
+    assert.equal(orderCalls().length, 0);
+  });
+
+  it("an unrelated PayPal error is still a real failure", async () => {
+    const { chat } = await account();
+    paypal.faults = ["bad-request"];
+    assert.equal((await buy(chat)).status, "FAILED");
+  });
+
+  it("any 422 when creating the order asks the owner, even with an issue code we have never seen", async () => {
+    const { user, chat } = await account();
+    paypal.faults = ["business-error"];
+    const r = await buy(chat);
+    assert.equal(r.status, "PENDING_APPROVAL");
+    assert.match(r.reasons[0], /would not take this payment.*A_NEW_BUSINESS_RULE/);
+    assert.equal(paypal.charges, 0);
+    assert.ok(await getVaultId(user.id), "the wallet is not blamed for a rule we can't identify");
+  });
+
+  it("a 422 at capture is never turned into a second payment", async () => {
+    const { chat } = await account();
+    paypal.faults = ["needs-capture"];
+    paypal.captureError = true; // "order already captured": money may have moved
+    const r = await buy(chat);
+    assert.equal(r.status, "FAILED", "asking the owner to pay again here could charge twice");
+    assert.equal(r.approvalUrl, undefined);
+  });
+
+  describe("refunds", () => {
+    it("send our transaction id as custom_id, and a request id that makes a retry safe", async () => {
+      const { user, chat } = await account();
+      const paid = await buy(chat);
+      assert.equal(paid.status, "PAID");
+      const refunded = await refundPurchase(user.id, paid.transactionId);
+      assert.equal(refunded.status, "REFUNDED");
+      const call = paypal.requests.find((q) => q.path.endsWith("/refund"));
+      assert.ok(call, "PayPal was asked to refund");
+      assert.equal(call.requestId, `${paid.transactionId}-refund`);
+      assert.equal(JSON.parse(call.body).custom_id, paid.transactionId);
+    });
+
+    it("a refund PayPal reports as FAILED leaves the purchase paid", async () => {
+      const { user, chat } = await account();
+      const paid = await buy(chat);
+      paypal.refundStatus = "FAILED";
+      await assert.rejects(() => refundPurchase(user.id, paid.transactionId), /could not complete this refund/);
+      assert.equal((await getTransaction(paid.transactionId))?.status, "PAID");
+    });
+
+    it("a CANCELLED refund leaves it paid too", async () => {
+      const { user, chat } = await account();
+      const paid = await buy(chat);
+      paypal.refundStatus = "CANCELLED";
+      await assert.rejects(() => refundPurchase(user.id, paid.transactionId), /could not complete this refund/);
+      assert.equal((await getTransaction(paid.transactionId))?.status, "PAID");
+    });
   });
 
   it("twelve parallel requests can't beat the database lock", async () => {
@@ -271,4 +349,136 @@ describe("payments when the network misbehaves", () => {
       assert.match(res.rows[0].note, /amount differs/);
     });
   });
+
+  describe("approval alerts", () => {
+  type Hit = { headers: Record<string, string | string[] | undefined>; body: any };
+  let receiver: Server;
+  let url = "";
+  let hits: Hit[] = [];
+  let answer = 200;
+
+  before(async () => {
+    receiver = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        hits.push({ headers: req.headers, body: JSON.parse(raw || "{}") });
+        res.writeHead(answer).end("ok");
+      });
+    });
+    await new Promise<void>((r) => receiver.listen(0, "127.0.0.1", r));
+    url = `http://127.0.0.1:${(receiver.address() as AddressInfo).port}/hooks/catch/1/secret-token/`;
+  });
+  after(async () => {
+    receiver.closeAllConnections();
+    await new Promise((r) => receiver.close(r));
+  });
+  beforeEach(() => {
+    hits = [];
+    answer = 200;
+    paypal.reset();
+  });
+
+  const settle = (ms = 200) => new Promise((r) => setTimeout(r, ms));
+  async function until(n: number) {
+    for (let i = 0; i < 40 && hits.length < n; i++) await settle(50);
+  }
+
+  it("tells the owner when a purchase needs their approval", async () => {
+    const { user, chat } = await account();
+    await setAlertUrl(user.id, url);
+    const r = await buy(chat, "p_earbuds");
+    assert.equal(r.status, "PENDING_APPROVAL");
+    await until(1);
+    assert.equal(hits.length, 1);
+    const { body, headers } = hits[0];
+    assert.equal(body.event, "approval_needed");
+    assert.match(body.text, /Wireless Earbuds.*waiting for your approval/);
+    assert.equal(body.purchase.id, r.transactionId);
+    assert.equal(body.purchase.amount, 79);
+    assert.match(body.approvalUrl, new RegExp(`/approve/${r.transactionId}$`));
+    assert.match(String(headers["content-type"]), /application\/json/);
+  });
+
+  it("stays quiet when no address is set", async () => {
+    const { chat } = await account();
+    await buy(chat, "p_earbuds");
+    await settle(300);
+    assert.equal(hits.length, 0);
+  });
+
+  it("stays quiet for a blocked purchase", async () => {
+    const { user, chat } = await account();
+    await setAlertUrl(user.id, url);
+    const r = await buy(chat, "p_casino_credits");
+    assert.equal(r.status, "BLOCKED");
+    await settle(300);
+    assert.equal(hits.length, 0);
+  });
+
+  it("tells the owner when a refused saved PayPal sends a purchase to them", async () => {
+    const { user, chat } = await account();
+    await setAlertUrl(user.id, url);
+    paypal.faults = ["declined"];
+    assert.equal((await buy(chat)).status, "PENDING_APPROVAL");
+    await until(1);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].body.event, "approval_needed");
+  });
+
+  it("tells the owner when a payment fails", async () => {
+    const { user, chat } = await account();
+    await setAlertUrl(user.id, url);
+    paypal.faults = ["bad-request"];
+    assert.equal((await buy(chat)).status, "FAILED");
+    await until(1);
+    assert.equal(hits[0].body.event, "payment_failed");
+    assert.match(hits[0].body.text, /failed.*Nothing was charged/);
+  });
+
+  it("never lets a broken receiver break a purchase", async () => {
+    const { user, chat } = await account();
+    await setAlertUrl(user.id, url);
+    answer = 500;
+    assert.equal((await buy(chat, "p_earbuds")).status, "PENDING_APPROVAL");
+    await setAlertUrl(user.id, "http://127.0.0.1:1/nothing-listens-here");
+    assert.equal((await buy(chat, "p_tea_sampler")).status, "PENDING_APPROVAL");
+  });
+
+  it("shows the owner where alerts go without revealing the secret part of the address", async () => {
+    const { user } = await account();
+    await setAlertUrl(user.id, url);
+    assert.deepEqual(await getAlertSettings(user.id), { configured: true, host: "127.0.0.1" });
+    const cookie = await logIn(user.email);
+    const res = await app.request("/api/notify", { headers: { cookie } });
+    const text = await res.text();
+    assert.equal(res.status, 200);
+    assert.doesNotMatch(text, /secret-token/);
+    await setAlertUrl(user.id, null);
+    assert.deepEqual(await getAlertSettings(user.id), { configured: false, host: null });
+  });
+
+  it("only a logged-in parent can change it, and a bad address is refused with a reason", async () => {
+    const { user } = await account();
+    assert.equal((await app.request("/api/notify", { method: "PUT", body: JSON.stringify({ url: "https://hooks.zapier.com/x" }) })).status, 401);
+    const cookie = await logIn(user.email);
+    process.env.NOTIFY_ALLOW_PRIVATE = "off";
+    try {
+      const res = await app.request("/api/notify", { method: "PUT", headers: { cookie }, body: JSON.stringify({ url: "https://169.254.169.254/latest" }) });
+      assert.equal(res.status, 400);
+      assert.match(((await res.json()) as { error: string }).error, /private network/);
+    } finally {
+      process.env.NOTIFY_ALLOW_PRIVATE = "on";
+    }
+  });
+
+  it("the test button reports what the receiver said", async () => {
+    const { user } = await account();
+    const cookie = await logIn(user.email);
+    await setAlertUrl(user.id, url);
+    const ok = (await (await app.request("/api/notify/test", { method: "POST", headers: { cookie } })).json()) as { ok: boolean };
+    assert.equal(ok.ok, true);
+    assert.equal(hits.at(-1)?.body.event, "test");
+  });
+});
 });

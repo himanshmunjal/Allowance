@@ -9,13 +9,14 @@ process.env.PAYPAL_CLIENT_ID = "test-client";
 process.env.PAYPAL_CLIENT_SECRET = "test-secret";
 process.env.MERCHANT_API_KEY = "test-merchant-key";
 process.env.DEMO_MODE = "on";
+process.env.NOTIFY_ALLOW_PRIVATE = "on"; // tests post to a local receiver; the SSRF tests switch it off
 delete process.env.GEMINI_API_KEY;
 delete process.env.GROQ_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.CHANNEL3_API_KEY;
 delete process.env.AGENT_API_KEY;
 
-export type Fault = "none" | "drop-after-charge" | "drop-before-charge" | "html-502" | "declined";
+export type Fault = "none" | "drop-after-charge" | "drop-before-charge" | "html-502" | "declined" | "token-gone" | "bad-request" | "business-error" | "needs-capture";
 
 /** A small stateful PayPal: charges once per PayPal-Request-Id, and can fail in the ways real networks do. */
 export class FakePayPal {
@@ -26,6 +27,10 @@ export class FakePayPal {
   faults: Fault[] = [];
   captures = new Map<string, { status: string; amount: { currency_code: string; value: string } }>();
   webhookVerdict = "SUCCESS";
+  /** What the refund endpoint answers with: PayPal can accept a refund and still report it FAILED or CANCELLED. */
+  refundStatus = "COMPLETED";
+  /** Make the capture endpoint refuse, as PayPal does for an order that was already captured. */
+  captureError = false;
   private orders = new Map<string, unknown>();
 
   async start() {
@@ -44,6 +49,8 @@ export class FakePayPal {
     this.requests = [];
     this.faults = [];
     this.webhookVerdict = "SUCCESS";
+    this.refundStatus = "COMPLETED";
+    this.captureError = false;
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse) {
@@ -73,6 +80,10 @@ export class FakePayPal {
         res.writeHead(502, { "Content-Type": "text/html" });
         return void res.end("<html>Bad Gateway</html>");
       }
+      if (fault === "token-gone") return json(404, { name: "RESOURCE_NOT_FOUND", message: "The specified resource does not exist.", details: [{ issue: "INVALID_RESOURCE_ID", description: "Vault id not found" }] });
+      if (fault === "bad-request") return json(400, { name: "INVALID_REQUEST", message: "bad", details: [{ issue: "MALFORMED_REQUEST", description: "bad" }] });
+      if (fault === "business-error") return json(422, { name: "UNPROCESSABLE_ENTITY", message: "business rule", details: [{ issue: "A_NEW_BUSINESS_RULE", description: "PayPal refused this order" }] });
+      if (fault === "needs-capture") return json(201, { id: `ORDERNC${randomBytes(6).toString("hex")}`, status: "CREATED", purchase_units: [{ payments: { captures: [] } }] });
       if (fault === "declined") return json(422, { name: "UNPROCESSABLE_ENTITY", message: "declined", details: [{ issue: "INSTRUMENT_DECLINED", description: "declined" }] });
 
       const known = requestId ? this.orders.get(requestId) : undefined;
@@ -93,6 +104,12 @@ export class FakePayPal {
       if (fault === "drop-after-charge") return void req.socket.destroy(); // PayPal charged; the answer never arrives
       return json(201, order);
     }
+    const orderCapture = path.match(/^\/v2\/checkout\/orders\/(.+)\/capture$/);
+    if (orderCapture && req.method === "POST") {
+      if (this.captureError) return json(422, { name: "UNPROCESSABLE_ENTITY", message: "already captured", details: [{ issue: "ORDER_ALREADY_CAPTURED", description: "Order already captured" }] });
+      return json(201, { id: orderCapture[1], status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: `CAP${randomBytes(6).toString("hex")}`, status: "COMPLETED", amount: { currency_code: "USD", value: "12.00" } }] } }] });
+    }
+    if (/^\/v2\/payments\/captures\/.+\/refund$/.test(path) && req.method === "POST") return json(201, { id: `REF${randomBytes(6).toString("hex")}`, status: this.refundStatus });
     json(404, { name: "NOT_FOUND", message: `fake PayPal has no ${req.method} ${path}` });
   }
 }

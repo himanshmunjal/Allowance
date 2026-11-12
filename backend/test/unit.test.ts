@@ -6,6 +6,7 @@ import { getMerchant, getProduct } from "../src/lib/catalog";
 import { checkChildSafety } from "../src/lib/child-safety";
 import { compareToPayPal } from "../src/lib/explorer";
 import { detectInjection } from "../src/lib/injection";
+import { checkWebhookUrl, isBlockedAddress, postJson } from "../src/lib/notify";
 import { DEFAULT_POLICY, evaluatePolicy, sanitizePolicy, stricter } from "../src/lib/policy";
 import { evaluateVelocity, type RecentPurchase } from "../src/lib/velocity";
 import type { Policy, SpendSummary } from "../src/shared/types";
@@ -170,4 +171,73 @@ describe("PayPal reconciliation", () => {
   it("flags a different amount", () => assert.match(compareToPayPal(tx, { status: "COMPLETED", amount: { value: "81.50" } }).note, /amount differs/));
   it("flags a ledger that hasn't heard of a refund", () => assert.match(compareToPayPal(tx, { status: "REFUNDED", amount: { value: "18.50" } }).note, /status differs/));
   it("accepts a recorded refund", () => assert.equal(compareToPayPal({ ...tx, status: "REFUNDED" }, { status: "REFUNDED", amount: { value: "18.50" } }).matches, true));
+});
+
+describe("approval alert addresses (SSRF)", () => {
+  // The default: only public https addresses. (Tests elsewhere switch this on to reach a local receiver.)
+  const strict = <T>(fn: () => T): T => {
+    const before = process.env.NOTIFY_ALLOW_PRIVATE;
+    process.env.NOTIFY_ALLOW_PRIVATE = "off";
+    try {
+      return fn();
+    } finally {
+      if (before === undefined) delete process.env.NOTIFY_ALLOW_PRIVATE;
+      else process.env.NOTIFY_ALLOW_PRIVATE = before;
+    }
+  };
+
+  it("accepts a normal https hook URL", () => {
+    strict(() => {
+      assert.equal(checkWebhookUrl("https://hooks.zapier.com/hooks/catch/123/abc/").ok, true);
+      assert.equal(checkWebhookUrl("https://93.184.216.34/hook").ok, true);
+    });
+  });
+
+  it("refuses anything that could reach the server's own network", () => {
+    strict(() => {
+      for (const bad of [
+        "http://hooks.zapier.com/x", // not https
+        "https://localhost/x",
+        "https://app.localhost/x",
+        "https://intranet/x", // a bare name resolves inside a private network
+        "https://box.internal/x",
+        "https://127.0.0.1/x",
+        "https://10.0.0.5/x",
+        "https://172.16.0.9/x",
+        "https://192.168.1.1/x",
+        "https://169.254.169.254/latest/meta-data", // cloud metadata
+        "https://100.64.0.1/x",
+        "https://[::1]/x",
+        "https://[fd00::1]/x",
+        "https://[::ffff:127.0.0.1]/x", // IPv4 hidden inside IPv6
+        "https://user:pass@hooks.zapier.com/x", // credentials in the address
+        "ftp://hooks.zapier.com/x",
+        "not a url",
+        "https://" + "a".repeat(600) + ".com/x",
+      ]) {
+        assert.equal(checkWebhookUrl(bad).ok, false, `${bad.slice(0, 60)} should be refused`);
+      }
+    });
+  });
+
+  it("knows which address ranges are private", () => {
+    for (const ip of ["10.1.2.3", "127.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.0.1", "169.254.1.1", "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "fd12::1", "fe80::1", "::ffff:10.0.0.1", "::ffff:7f00:1"]) {
+      assert.equal(isBlockedAddress(ip), true, ip);
+    }
+    for (const ip of ["8.8.8.8", "93.184.216.34", "172.32.0.1", "172.15.0.1", "100.63.0.1", "2606:4700:4700::1111"]) {
+      assert.equal(isBlockedAddress(ip), false, ip);
+    }
+  });
+
+  it("checks the address again at connection time, so a name that points inward is stopped", async () => {
+    const before = process.env.NOTIFY_ALLOW_PRIVATE;
+    process.env.NOTIFY_ALLOW_PRIVATE = "off";
+    try {
+      // "localhost" passes no name rule here because we call postJson directly: the connect-time check must catch it.
+      await assert.rejects(() => postJson(new URL("https://localhost:9/x"), {}), /private network/);
+    } finally {
+      if (before === undefined) delete process.env.NOTIFY_ALLOW_PRIVATE;
+      else process.env.NOTIFY_ALLOW_PRIVATE = before;
+    }
+  });
 });

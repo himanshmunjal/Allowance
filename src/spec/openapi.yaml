@@ -1,0 +1,1291 @@
+openapi: 3.0.3
+info:
+  title: Allowance Agent & Merchant API
+  version: 1.3.0
+  contact:
+    name: Allowance
+    url: https://github.com/himanshmunjal/Allowance
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+  description: |-
+    Let AI agents pay with PayPal, inside rules a human set.
+
+    An agent can only ask to buy. Every request runs through one pipeline (the owner's rules, the agent's own allowance, a prompt-injection screen, a retry and split guard, an AI risk check, then PayPal) and ends one of three ways: paid from the owner's saved PayPal, sent to the owner for approval in PayPal, or blocked with a reason.
+
+    There are two trust domains, each with its own key:
+
+    * Agents can search, ask to buy and withdraw their own requests. They never name a price and can never approve or refund.
+    * Merchants name the price, by creating a checkout quote that an agent can then only refer to by id.
+
+    The same agent operations are available to MCP clients at POST /mcp, using the same agent key.
+
+    Money amounts are in US dollars. Timestamps are ISO 8601 in UTC.
+externalDocs:
+  description: Project overview, design and how to run it
+  url: https://github.com/himanshmunjal/Allowance#readme
+servers:
+- url: '{baseUrl}'
+  description: 'Local development environment: your own Allowance backend'
+  variables:
+    baseUrl:
+      default: http://localhost:4000
+      description: Where the backend is running, with no trailing slash
+tags:
+- name: Agent
+  description: Used by an AI agent, with its own key from the dashboard
+- name: Merchant
+  description: Used by a store, with the store key
+- name: Store
+  description: The Brew & Co. demo store. It is public and shows how a merchant integrates Pay with Allowance
+paths:
+  /api/agent/search:
+    post:
+      tags:
+      - Agent
+      operationId: searchProducts
+      summary: Search the catalog
+      description: Live retailer products through Channel3 when configured, otherwise the demo catalog. Prices are checked again at purchase.
+      security:
+      - agentKey: []
+      requestBody:
+        required: true
+        description: What to search for. Every field is optional
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            example:
+              query: coffee beans
+              maxPrice: 25
+      responses:
+        '200':
+          description: Matching products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              example:
+                products:
+                - id: p_beans_ethiopia
+                  name: Ethiopia Yirgacheffe Whole Beans (340g)
+                  description: Light roast, floral and citrus notes.
+                  price: 18.5
+                  category: coffee
+                  rating: 4.8
+                  deliveryDays: 2
+                  merchantName: Bean & Brew Roasters
+                  merchantId: m_beanbrew
+                  merchantVerified: true
+                  emoji: ☕
+                  source: demo
+                  url: https://example.com/beans
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/agent/status:
+    get:
+      tags:
+      - Agent
+      operationId: getSpendingStatus
+      summary: The owner's rules and budget, and this agent's allowance
+      description: What the agent may spend right now. A child's agent sees only its own allowance and the rules, not the parent's budget or wallet.
+      security:
+      - agentKey: []
+      responses:
+        '200':
+          description: Spending status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpendingStatus'
+              example:
+                rules: $150/week · auto-pay ≤ $25 · max $100 per purchase
+                policy:
+                  weeklyBudget: 150
+                  autoApproveLimit: 25
+                  perPurchaseMax: 100
+                  allowedMerchants: []
+                  blockedCategories:
+                  - gambling
+                  approvalCategories:
+                  - electronics
+                  categoryAskAbove:
+                  - category: electronics
+                    amount: 50
+                  unverifiedMerchants: block
+                budget:
+                  weeklyBudget: 150
+                  spent: 42.5
+                  pending: 79
+                  remaining: 28.5
+                agent:
+                  name: Grocery bot
+                  status: active
+                  allowance: $40/week, auto-pay up to $15
+                  spentThisWeek: 12
+                  remaining: 28
+                autoPay: enabled (PayPal wallet connected)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/agent/purchase:
+    post:
+      tags:
+      - Agent
+      operationId: requestPurchase
+      summary: Ask to buy something
+      description: 'Runs the full pipeline: server-side price, the owner''s rules, this agent''s allowance, prompt-injection screen, retry and split guard, AI risk check, a final check under a database lock, then PayPal. There is deliberately no price field: anything like one is ignored.'
+      security:
+      - agentKey: []
+      requestBody:
+        required: true
+        description: The product to buy and why. There is no price field on purpose
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PurchaseRequest'
+            example:
+              productId: p_beans_ethiopia
+              quantity: 1
+              intent: Buy me fruity coffee beans
+              reason: Light roast with citrus notes from a verified roaster
+      responses:
+        '200':
+          description: The decision. A BLOCKED purchase is a successful response, not an error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurchaseResult'
+              example:
+                status: PENDING_APPROVAL
+                transactionId: tx_201bf75e71e3
+                title: Wireless Earbuds
+                merchant: ByteGadgets
+                amount: 79
+                currency: USD
+                reasons:
+                - $79.00 is above your $25.00 auto-pay limit
+                approvalUrl: http://localhost:3000/approve/tx_201bf75e71e3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/agent/purchases/{id}/withdraw:
+    post:
+      tags:
+      - Agent
+      operationId: withdrawPurchase
+      summary: Cancel this agent's own request while it waits for approval
+      description: An agent can withdraw only its own request, and only while it is still waiting. It can never approve one.
+      security:
+      - agentKey: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: The transactionId returned by the purchase request
+        schema:
+          type: string
+          description: A transaction id
+          example: tx_201bf75e71e3
+        example: tx_201bf75e71e3
+      responses:
+        '200':
+          description: Withdrawn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WithdrawResult'
+              example:
+                id: tx_201bf75e71e3
+                status: REJECTED
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/agent/transactions:
+    get:
+      tags:
+      - Agent
+      operationId: listTransactions
+      summary: This agent's recent purchases, and why each was decided that way
+      description: Up to 20 of this agent's own purchases, newest first, each with the reasons behind the decision. It never shows other agents' purchases.
+      security:
+      - agentKey: []
+      responses:
+        '200':
+          description: Up to 20 purchases, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionList'
+              example:
+                transactions:
+                - id: tx_201bf75e71e3
+                  status: PAID
+                  item: Fresh Fruit Box
+                  amount: 24
+                  merchant: GreenLeaf Grocers
+                  reasons:
+                  - Fits your budget and rules
+                  createdAt: '2026-11-04T02:23:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/merchant/quotes:
+    post:
+      tags:
+      - Merchant
+      operationId: createQuote
+      summary: State an item and price for an agent to buy
+      description: Valid for 24 hours. The agent passes the returned quoteId as productId, and cannot change the price.
+      security:
+      - merchantKey: []
+      requestBody:
+        required: true
+        description: The item and the price the store is asking
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            example:
+              merchant: shop.example.com
+              item: Yoga mat
+              price: 36
+              category: other
+      responses:
+        '201':
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+              example:
+                merchant: shop.example.com
+                item: Yoga mat
+                price: 36
+                category: other
+                description: Non-slip, 6mm
+                url: https://shop.example.com/yoga-mat
+                sellerVerified: true
+                rating: 4.6
+                deliveryDays: 3
+                quoteId: q_3f9a1c7e2b4d
+                expiresAt: '2026-11-05T02:23:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/store/products:
+    get:
+      tags:
+      - Store
+      operationId: listStoreProducts
+      summary: The demo store's products
+      description: The Brew & Co. catalog. It is public, like any shop's product list, and needs no key.
+      security: []
+      responses:
+        '200':
+          description: The store's name and its products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreCatalog'
+              example:
+                store: Brew & Co.
+                products:
+                - id: bc_house_blend
+                  name: House Blend Beans (500g)
+                  description: Chocolatey medium roast, our bestseller.
+                  price: 16
+                  category: coffee
+                  emoji: ☕
+                  rating: 4.8
+                  deliveryDays: 2
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/store/checkout:
+    post:
+      tags:
+      - Store
+      operationId: startStoreCheckout
+      summary: Price an order and get a Pay with Allowance link
+      description: The store sets the price and creates a checkout quote. Send the shopper to checkoutUrl, where Allowance decides whether it is paid, needs approval, or is blocked.
+      security: []
+      requestBody:
+        required: true
+        description: Which product to order, and how many
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreCheckoutRequest'
+            example:
+              productId: bc_house_blend
+              quantity: 1
+      responses:
+        '200':
+          description: A quote id and the checkout page to send the shopper to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreCheckout'
+              example:
+                quoteId: q_3f9a1c7e2b4d
+                quantity: 1
+                checkoutUrl: /checkout/q_3f9a1c7e2b4d?qty=1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Unknown product
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Unknown product
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+  /api/store/orders/{quoteId}:
+    get:
+      tags:
+      - Store
+      operationId: getStoreOrder
+      summary: What Allowance decided about an order
+      description: The store's view of its order. It shows the decision, with no buyer details.
+      security: []
+      parameters:
+      - name: quoteId
+        in: path
+        required: true
+        description: The quoteId returned by the checkout call
+        schema:
+          type: string
+          description: A quote id
+          example: q_3f9a1c7e2b4d
+        example: q_3f9a1c7e2b4d
+      responses:
+        '200':
+          description: The order, or null if nothing has been bought with this quote yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreOrderView'
+              example:
+                store: Brew & Co.
+                order:
+                  status: PAID
+                  amount: 16
+                  quantity: 1
+                  title: House Blend Beans (500g)
+                  agent_name: Chat agent
+                  updated_at: '2026-11-04T02:30:00Z'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+components:
+  securitySchemes:
+    agentKey:
+      type: http
+      scheme: bearer
+      description: An agent's own key, starting with alw_, created in the dashboard and shown once
+    merchantKey:
+      type: http
+      scheme: bearer
+      description: The store's key, set as MERCHANT_API_KEY on the backend
+  responses:
+    Unauthorized:
+      description: Missing, wrong or revoked key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: 'Unauthorized: send Authorization: Bearer <agent key>'
+    BadRequest:
+      description: The request cannot be processed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Invalid request
+    UnexpectedError:
+      description: Anything else that went wrong, such as the database or PayPal being unavailable (500, 502 or 503)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Database unavailable (ECONNREFUSED).
+  schemas:
+    Category:
+      type: string
+      description: What kind of thing is being bought. Owners set rules by category
+      enum:
+      - coffee
+      - groceries
+      - gifts
+      - electronics
+      - books
+      - clothing
+      - home
+      - gambling
+      - other
+      example: coffee
+    TransactionStatus:
+      type: string
+      description: Where a purchase is in its life
+      enum:
+      - PROCESSING
+      - PAID
+      - PENDING_APPROVAL
+      - BLOCKED
+      - REJECTED
+      - REFUNDED
+      - FAILED
+      example: PAID
+    PurchaseDecision:
+      type: string
+      description: 'What was decided. PAID: done. PENDING_APPROVAL: give the user approvalUrl. BLOCKED: explain, and do not try to get around it. FAILED: PayPal said no and nothing was charged. PROCESSING: PayPal''s answer was lost and it is being confirmed, so do not retry.'
+      enum:
+      - PAID
+      - PENDING_APPROVAL
+      - BLOCKED
+      - FAILED
+      - PROCESSING
+      example: PENDING_APPROVAL
+    AgentStatus:
+      type: string
+      description: Whether the agent may buy. A paused agent cannot buy anything
+      enum:
+      - active
+      - paused
+      example: active
+    ProductSource:
+      type: string
+      description: Where the product came from
+      enum:
+      - demo
+      - channel3
+      - quote
+      example: demo
+    UnverifiedMerchantRule:
+      type: string
+      description: What to do with a seller that is not verified
+      enum:
+      - block
+      - approve
+      - allow
+      example: block
+    ErrorResponse:
+      type: object
+      description: How every error is reported. Validation errors also carry a details list naming the invalid fields
+      example:
+        error: Invalid request
+      properties:
+        error:
+          type: string
+          description: What went wrong, in plain words
+          example: Invalid request
+      required:
+      - error
+    SearchRequest:
+      type: object
+      description: What to look for. Every field is optional
+      example:
+        query: coffee beans
+        maxPrice: 25
+        category: coffee
+      properties:
+        query:
+          type: string
+          description: Words to search for
+          example: coffee beans
+        maxPrice:
+          type: number
+          description: Only return products at or below this price, in US dollars
+          example: 25
+        category:
+          $ref: '#/components/schemas/Category'
+    Product:
+      type: object
+      description: Something an agent can ask to buy
+      example:
+        id: p_beans_ethiopia
+        name: Ethiopia Yirgacheffe Whole Beans (340g)
+        description: Light roast, floral and citrus notes.
+        price: 18.5
+        category: coffee
+        rating: 4.8
+        deliveryDays: 2
+        merchantName: Bean & Brew Roasters
+        merchantId: m_beanbrew
+        merchantVerified: true
+        emoji: ☕
+        source: demo
+        url: https://example.com/beans
+      properties:
+        id:
+          type: string
+          description: Pass this as productId when asking to buy
+          example: p_beans_ethiopia
+        name:
+          type: string
+          description: Product name
+          example: Ethiopia Yirgacheffe Whole Beans (340g)
+        description:
+          type: string
+          description: Short description
+          example: Light roast, floral and citrus notes.
+        price:
+          type: number
+          description: Price in US dollars. It is checked again at purchase
+          example: 18.5
+        category:
+          type: string
+          description: The product's category
+          example: coffee
+        rating:
+          type: number
+          description: Average rating out of 5
+          example: 4.8
+          nullable: true
+        deliveryDays:
+          type: integer
+          description: Estimated days to deliver
+          example: 2
+          nullable: true
+        merchantId:
+          type: string
+          description: The seller's id
+          example: m_beanbrew
+        merchantName:
+          type: string
+          description: The seller
+          example: Bean & Brew Roasters
+        merchantVerified:
+          type: boolean
+          description: Whether the seller is verified
+          example: true
+        emoji:
+          type: string
+          description: A picture for the product
+          example: ☕
+        source:
+          $ref: '#/components/schemas/ProductSource'
+        url:
+          type: string
+          description: A link to the product
+          example: https://example.com/beans
+    SearchResponse:
+      type: object
+      description: Matching products, best first
+      example:
+        products:
+        - id: p_beans_ethiopia
+          name: Ethiopia Yirgacheffe Whole Beans (340g)
+          description: Light roast, floral and citrus notes.
+          price: 18.5
+          category: coffee
+          rating: 4.8
+          deliveryDays: 2
+          merchantName: Bean & Brew Roasters
+          merchantId: m_beanbrew
+          merchantVerified: true
+          emoji: ☕
+          source: demo
+          url: https://example.com/beans
+      properties:
+        products:
+          type: array
+          description: Matching products, best first
+          example:
+          - id: p_beans_ethiopia
+            name: Ethiopia Yirgacheffe Whole Beans (340g)
+            description: Light roast, floral and citrus notes.
+            price: 18.5
+            category: coffee
+            rating: 4.8
+            deliveryDays: 2
+            merchantName: Bean & Brew Roasters
+            merchantId: m_beanbrew
+            merchantVerified: true
+            emoji: ☕
+            source: demo
+            url: https://example.com/beans
+          items:
+            $ref: '#/components/schemas/Product'
+      required:
+      - products
+    CategoryLimit:
+      type: object
+      description: Ask for approval in one category only above this amount
+      example:
+        category: electronics
+        amount: 50
+      properties:
+        category:
+          $ref: '#/components/schemas/Category'
+        amount:
+          type: number
+          description: Purchases in this category above this amount need approval, in US dollars
+          example: 50
+    Policy:
+      type: object
+      description: The owner's rules as typed values
+      example:
+        weeklyBudget: 150
+        autoApproveLimit: 25
+        perPurchaseMax: 100
+        allowedMerchants: []
+        blockedCategories:
+        - gambling
+        approvalCategories:
+        - electronics
+        categoryAskAbove:
+        - category: electronics
+          amount: 50
+        unverifiedMerchants: block
+      properties:
+        weeklyBudget:
+          type: number
+          description: Most that can be spent in a rolling 7 days, in US dollars
+          example: 150
+        autoApproveLimit:
+          type: number
+          description: Purchases up to this amount are paid automatically, in US dollars
+          example: 25
+        perPurchaseMax:
+          type: number
+          description: No single purchase may be more than this, in US dollars
+          example: 100
+        allowedMerchants:
+          type: array
+          description: If not empty, only these sellers are allowed
+          example:
+          - Bean & Brew Roasters
+          items:
+            type: string
+            description: A seller's name
+            example: Bean & Brew Roasters
+        blockedCategories:
+          type: array
+          description: Categories that are always blocked
+          example:
+          - gambling
+          items:
+            $ref: '#/components/schemas/Category'
+        approvalCategories:
+          type: array
+          description: Categories that always need approval
+          example:
+          - electronics
+          items:
+            $ref: '#/components/schemas/Category'
+        categoryAskAbove:
+          type: array
+          description: Categories that need approval only above an amount
+          example:
+          - category: electronics
+            amount: 50
+          items:
+            $ref: '#/components/schemas/CategoryLimit'
+        unverifiedMerchants:
+          $ref: '#/components/schemas/UnverifiedMerchantRule'
+    Budget:
+      type: object
+      description: The owner's weekly budget so far
+      example:
+        weeklyBudget: 150
+        spent: 42.5
+        pending: 79
+        remaining: 28.5
+      properties:
+        weeklyBudget:
+          type: number
+          description: Most that can be spent in a rolling 7 days, in US dollars
+          example: 150
+        spent:
+          type: number
+          description: Already paid in the last 7 days, in US dollars
+          example: 42.5
+        pending:
+          type: number
+          description: Waiting for approval, which still counts against the budget, in US dollars
+          example: 79
+        remaining:
+          type: number
+          description: What is left to spend, in US dollars
+          example: 28.5
+    AgentAllowance:
+      type: object
+      description: This agent's own allowance
+      example:
+        name: Grocery bot
+        status: active
+        allowance: $40/week, auto-pay up to $15
+        spentThisWeek: 12
+        remaining: 28
+      properties:
+        name:
+          type: string
+          description: The agent's name
+          example: Grocery bot
+        status:
+          $ref: '#/components/schemas/AgentStatus'
+        allowance:
+          type: string
+          description: The agent's limits in words
+          example: $40/week, auto-pay up to $15
+        spentThisWeek:
+          type: number
+          description: Spent in the last 7 days, including purchases waiting for approval, in US dollars
+          example: 12
+        remaining:
+          type: number
+          description: What is left of this agent's weekly budget in US dollars. Absent if it has none
+          example: 28
+    SpendingStatus:
+      type: object
+      description: The rules, budget and allowance that apply to this agent right now. A child's agent gets only rules and agent
+      example:
+        rules: $150/week · auto-pay ≤ $25 · max $100 per purchase
+        policy:
+          weeklyBudget: 150
+          autoApproveLimit: 25
+          perPurchaseMax: 100
+          allowedMerchants: []
+          blockedCategories:
+          - gambling
+          approvalCategories:
+          - electronics
+          categoryAskAbove:
+          - category: electronics
+            amount: 50
+          unverifiedMerchants: block
+        budget:
+          weeklyBudget: 150
+          spent: 42.5
+          pending: 79
+          remaining: 28.5
+        agent:
+          name: Grocery bot
+          status: active
+          allowance: $40/week, auto-pay up to $15
+          spentThisWeek: 12
+          remaining: 28
+        autoPay: enabled (PayPal wallet connected)
+      properties:
+        rules:
+          type: string
+          description: The owner's rules in one line
+          example: $150/week · auto-pay ≤ $25 · max $100 per purchase
+        policy:
+          $ref: '#/components/schemas/Policy'
+        budget:
+          $ref: '#/components/schemas/Budget'
+        agent:
+          $ref: '#/components/schemas/AgentAllowance'
+        autoPay:
+          type: string
+          description: Whether purchases can be paid without a popup
+          example: enabled (PayPal wallet connected)
+      required:
+      - rules
+      - agent
+    PurchaseRequest:
+      type: object
+      description: A request to buy. There is no price field on purpose
+      example:
+        productId: p_beans_ethiopia
+        quantity: 1
+        intent: Buy me fruity coffee beans
+        reason: Light roast with citrus notes from a verified roaster
+      properties:
+        productId:
+          type: string
+          description: From search, or a q_ checkout quote id
+          example: p_beans_ethiopia
+        quantity:
+          type: integer
+          description: How many to buy
+          example: 1
+          minimum: 1
+          maximum: 20
+          default: 1
+        intent:
+          type: string
+          description: What the user asked for, in their words
+          example: Buy me fruity coffee beans
+          minLength: 3
+          maxLength: 1000
+        reason:
+          type: string
+          description: Why this product fits
+          example: Light roast with citrus notes from a verified roaster
+          minLength: 3
+          maxLength: 1000
+      required:
+      - productId
+      - intent
+      - reason
+    PurchaseResult:
+      type: object
+      description: What was decided about a purchase request
+      example:
+        status: PENDING_APPROVAL
+        transactionId: tx_201bf75e71e3
+        title: Wireless Earbuds
+        merchant: ByteGadgets
+        amount: 79
+        currency: USD
+        reasons:
+        - $79.00 is above your $25.00 auto-pay limit
+        approvalUrl: http://localhost:3000/approve/tx_201bf75e71e3
+      properties:
+        status:
+          $ref: '#/components/schemas/PurchaseDecision'
+        transactionId:
+          type: string
+          description: Use this to withdraw a waiting request
+          example: tx_201bf75e71e3
+        title:
+          type: string
+          description: What is being bought
+          example: Wireless Earbuds
+        merchant:
+          type: string
+          description: The seller
+          example: ByteGadgets
+        amount:
+          type: number
+          description: Total in US dollars, set by the server
+          example: 79
+        currency:
+          type: string
+          description: Currency code
+          example: USD
+        reasons:
+          type: array
+          description: Why it was decided this way. The reason it was held or blocked comes first
+          example:
+          - $79.00 is above your $25.00 auto-pay limit
+          items:
+            type: string
+            description: One reason
+            example: $79.00 is above your $25.00 auto-pay limit
+        approvalUrl:
+          type: string
+          description: Only for PENDING_APPROVAL. Opening it requires the owner's login
+          example: http://localhost:3000/approve/tx_201bf75e71e3
+      required:
+      - status
+      - transactionId
+      - title
+      - merchant
+      - amount
+      - currency
+      - reasons
+    WithdrawResult:
+      type: object
+      description: The request after it was withdrawn
+      example:
+        id: tx_201bf75e71e3
+        status: REJECTED
+      properties:
+        id:
+          type: string
+          description: The transaction id
+          example: tx_201bf75e71e3
+        status:
+          type: string
+          description: The new status
+          example: REJECTED
+    TransactionSummary:
+      type: object
+      description: One of this agent's purchases
+      example:
+        id: tx_201bf75e71e3
+        status: PAID
+        item: Fresh Fruit Box
+        amount: 24
+        merchant: GreenLeaf Grocers
+        reasons:
+        - Fits your budget and rules
+        createdAt: '2026-11-04T02:23:00Z'
+      properties:
+        id:
+          type: string
+          description: The transaction id
+          example: tx_201bf75e71e3
+        status:
+          $ref: '#/components/schemas/TransactionStatus'
+        item:
+          type: string
+          description: What was bought
+          example: Fresh Fruit Box
+        amount:
+          type: number
+          description: Total in US dollars
+          example: 24
+        merchant:
+          type: string
+          description: The seller
+          example: GreenLeaf Grocers
+        reasons:
+          type: array
+          description: Why it was decided this way
+          example:
+          - Fits your budget and rules
+          items:
+            type: string
+            description: One reason
+            example: Fits your budget and rules
+        createdAt:
+          type: string
+          description: When it was requested
+          example: '2026-11-04T02:23:00Z'
+          format: date-time
+    TransactionList:
+      type: object
+      description: This agent's recent purchases, newest first
+      example:
+        transactions:
+        - id: tx_201bf75e71e3
+          status: PAID
+          item: Fresh Fruit Box
+          amount: 24
+          merchant: GreenLeaf Grocers
+          reasons:
+          - Fits your budget and rules
+          createdAt: '2026-11-04T02:23:00Z'
+      properties:
+        transactions:
+          type: array
+          description: Newest first
+          example:
+          - id: tx_201bf75e71e3
+            status: PAID
+            item: Fresh Fruit Box
+            amount: 24
+            merchant: GreenLeaf Grocers
+            reasons:
+            - Fits your budget and rules
+            createdAt: '2026-11-04T02:23:00Z'
+          items:
+            $ref: '#/components/schemas/TransactionSummary'
+    QuoteRequest:
+      type: object
+      description: What a store wants to sell, and at what price
+      example:
+        merchant: shop.example.com
+        item: Yoga mat
+        price: 36
+        category: other
+        description: Non-slip, 6mm
+        url: https://shop.example.com/yoga-mat
+        sellerVerified: true
+        rating: 4.6
+        deliveryDays: 3
+      properties:
+        merchant:
+          type: string
+          description: The store's name
+          example: shop.example.com
+          minLength: 2
+          maxLength: 80
+        item:
+          type: string
+          description: What is being sold
+          example: Yoga mat
+          minLength: 2
+          maxLength: 160
+        price:
+          type: number
+          description: Price in US dollars. The agent cannot change it
+          example: 36
+          minimum: 0
+          maximum: 10000
+          exclusiveMinimum: true
+        category:
+          $ref: '#/components/schemas/Category'
+        description:
+          type: string
+          description: Short description shown to the owner
+          example: Non-slip, 6mm
+          maxLength: 1000
+        url:
+          type: string
+          description: Link to the item on the store
+          example: https://shop.example.com/yoga-mat
+          format: uri
+        sellerVerified:
+          type: boolean
+          description: Whether the store says it is a verified seller
+          example: true
+          default: true
+        rating:
+          type: number
+          description: Average rating out of 5
+          example: 4.6
+          minimum: 0
+          maximum: 5
+          nullable: true
+        deliveryDays:
+          type: integer
+          description: Estimated days to deliver
+          example: 3
+          minimum: 0
+          maximum: 90
+          nullable: true
+      required:
+      - merchant
+      - item
+      - price
+    Quote:
+      type: object
+      description: The quote that was created. Quotes are valid for 24 hours
+      example:
+        merchant: shop.example.com
+        item: Yoga mat
+        price: 36
+        category: other
+        description: Non-slip, 6mm
+        url: https://shop.example.com/yoga-mat
+        sellerVerified: true
+        rating: 4.6
+        deliveryDays: 3
+        quoteId: q_3f9a1c7e2b4d
+        expiresAt: '2026-11-05T02:23:00Z'
+      properties:
+        quoteId:
+          type: string
+          description: Give this to the agent. It passes it as productId
+          example: q_3f9a1c7e2b4d
+        expiresAt:
+          type: string
+          description: When the quote stops being valid
+          example: '2026-11-05T02:23:00Z'
+          format: date-time
+        merchant:
+          type: string
+          description: The store's name
+          example: shop.example.com
+        item:
+          type: string
+          description: What is being sold
+          example: Yoga mat
+        price:
+          type: number
+          description: Price in US dollars
+          example: 36
+        category:
+          $ref: '#/components/schemas/Category'
+        description:
+          type: string
+          description: Short description shown to the owner
+          example: Non-slip, 6mm
+        url:
+          type: string
+          description: Link to the item on the store
+          example: https://shop.example.com/yoga-mat
+          format: uri
+        sellerVerified:
+          type: boolean
+          description: Whether the store says it is a verified seller
+          example: true
+        rating:
+          type: number
+          description: Average rating out of 5
+          example: 4.6
+          nullable: true
+        deliveryDays:
+          type: integer
+          description: Estimated days to deliver
+          example: 3
+          nullable: true
+      required:
+      - quoteId
+      - expiresAt
+    StoreProduct:
+      type: object
+      description: A product in the Brew & Co. demo store
+      example:
+        id: bc_house_blend
+        name: House Blend Beans (500g)
+        description: Chocolatey medium roast, our bestseller.
+        price: 16
+        category: coffee
+        emoji: ☕
+        rating: 4.8
+        deliveryDays: 2
+      properties:
+        id:
+          type: string
+          description: Use this as productId at checkout
+          example: bc_house_blend
+        name:
+          type: string
+          description: Product name
+          example: House Blend Beans (500g)
+        description:
+          type: string
+          description: Short description
+          example: Chocolatey medium roast, our bestseller.
+        price:
+          type: number
+          description: Price in US dollars
+          example: 16
+        category:
+          $ref: '#/components/schemas/Category'
+        emoji:
+          type: string
+          description: A picture for the product
+          example: ☕
+        rating:
+          type: number
+          description: Average rating out of 5
+          example: 4.8
+        deliveryDays:
+          type: integer
+          description: Estimated days to deliver
+          example: 2
+    StoreCatalog:
+      type: object
+      description: The store's name and its products
+      example:
+        store: Brew & Co.
+        products:
+        - id: bc_house_blend
+          name: House Blend Beans (500g)
+          description: Chocolatey medium roast, our bestseller.
+          price: 16
+          category: coffee
+          emoji: ☕
+          rating: 4.8
+          deliveryDays: 2
+      properties:
+        store:
+          type: string
+          description: The store's name
+          example: Brew & Co.
+        products:
+          type: array
+          description: Everything the store sells
+          example:
+          - id: bc_house_blend
+            name: House Blend Beans (500g)
+            description: Chocolatey medium roast, our bestseller.
+            price: 16
+            category: coffee
+            emoji: ☕
+            rating: 4.8
+            deliveryDays: 2
+          items:
+            $ref: '#/components/schemas/StoreProduct'
+    StoreCheckoutRequest:
+      type: object
+      description: Which product to order, and how many
+      example:
+        productId: bc_house_blend
+        quantity: 1
+      properties:
+        productId:
+          type: string
+          description: A Brew & Co. product id from the products list
+          example: bc_house_blend
+        quantity:
+          type: integer
+          description: How many to order
+          example: 1
+          minimum: 1
+          maximum: 5
+          default: 1
+      required:
+      - productId
+    StoreCheckout:
+      type: object
+      description: Where to send the shopper to pay
+      example:
+        quoteId: q_3f9a1c7e2b4d
+        quantity: 1
+        checkoutUrl: /checkout/q_3f9a1c7e2b4d?qty=1
+      properties:
+        quoteId:
+          type: string
+          description: The quote the store created
+          example: q_3f9a1c7e2b4d
+        quantity:
+          type: integer
+          description: How many were ordered
+          example: 1
+        checkoutUrl:
+          type: string
+          description: The Allowance checkout page, relative to the frontend
+          example: /checkout/q_3f9a1c7e2b4d?qty=1
+    StoreOrder:
+      type: object
+      description: What was decided about an order. It is null until something has been bought with the quote
+      example:
+        status: PAID
+        amount: 16
+        quantity: 1
+        title: House Blend Beans (500g)
+        agent_name: Chat agent
+        updated_at: '2026-11-04T02:30:00Z'
+      properties:
+        status:
+          $ref: '#/components/schemas/TransactionStatus'
+        amount:
+          type: number
+          description: Total in US dollars
+          example: 16
+        quantity:
+          type: integer
+          description: How many were ordered
+          example: 1
+        title:
+          type: string
+          description: What was ordered
+          example: House Blend Beans (500g)
+        agent_name:
+          type: string
+          description: The agent that bought it, if one did
+          example: Chat agent
+          nullable: true
+        updated_at:
+          type: string
+          description: When the decision last changed
+          example: '2026-11-04T02:30:00Z'
+          format: date-time
+      nullable: true
+    StoreOrderView:
+      type: object
+      description: The store's view of one order, with no buyer details
+      example:
+        store: Brew & Co.
+        order:
+          status: PAID
+          amount: 16
+          quantity: 1
+          title: House Blend Beans (500g)
+          agent_name: Chat agent
+          updated_at: '2026-11-04T02:30:00Z'
+      properties:
+        store:
+          type: string
+          description: The store's name
+          example: Brew & Co.
+        order:
+          $ref: '#/components/schemas/StoreOrder'

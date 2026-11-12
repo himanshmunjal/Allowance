@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import type { Agent, AuditEvent, Me, SpendSummary, Transaction, User, Wallet } from "@shared/types";
+import AlertsPanel from "./AlertsPanel";
 import Chat from "./Chat";
 import { api } from "./format";
 import Header from "./Header";
@@ -136,6 +137,7 @@ function OwnerDashboard({ user }: { user: User }) {
           </div>
           <div className="flex min-w-0 flex-col gap-5 lg:col-span-5">
             <RulesPanel onChange={refresh} />
+            <AlertsPanel />
             <Ledger transactions={data?.transactions ?? []} events={data?.events ?? []} agents={data?.agents ?? []} onChange={refresh} />
           </div>
         </div>

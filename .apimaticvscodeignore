@@ -1,0 +1,9 @@
+node_modules/**
+frontend/.next/**
+backend/dist/**
+.git/**
+backend/.env
+frontend/.env.local
+docs/postman/**
+openapi (3).yaml
+frontend/AGENTS.md

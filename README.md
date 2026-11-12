@@ -56,6 +56,7 @@ the AI reviewer is rigged to approve everything, so the code has to hold on its 
 | Injection in a listing, a product name or a store name, including Unicode disguises | Blocked by a deterministic screen | code |
 | Agent names its own price | Ignored: there is no price input | code |
 | Runaway quantity, forbidden category, unverified seller | Blocked | code |
+| Saved PayPal revoked, expired or declined | Nothing is charged: the purchase waits for your approval, and if the saved PayPal is gone, auto-pay turns off | code |
 | Retried tool call (double charge) | One payment; the repeat waits for a human | code |
 | Splitting one purchase, or draining in small bites | Held for a human once it adds up | code |
 | 12 purchases racing a $50 budget | Serialized by a database lock: never over budget | code |
@@ -123,6 +124,7 @@ How the AI is used:
 | **Shopping agent** (`backend/src/lib/agent.ts`) | Tool-use loop: `search_products`, `get_spending_status`, `request_purchase`, `list_recent_transactions`. Shows which provider answered each message |
 | **AI risk check** (`backend/src/lib/risk.ts`) | Structured JSON: does the cart match what the user asked for? Flags mismatches, odd quantities and manipulation. Fails safe to "needs approval" |
 | **Rule parser** (`backend/src/lib/rules-parser.ts`) | Structured JSON: plain-English rules → typed policy |
+| **Approval alerts** (`backend/src/lib/notify.ts`) | Paste a webhook address in the dashboard (a Zapier Catch Hook, a Slack incoming webhook, anything that takes a JSON POST) and get a message when a purchase needs your approval or a payment fails. Blocked purchases stay quiet. Because the server calls a URL a user typed, it is https-only, refuses private and internal addresses (checked again at the moment of connecting), never follows redirects, and never shows the saved URL back |
 | **Rule advisor** (`backend/src/lib/advisor.ts`) | Your decisions become suggested rules. Code counts the evidence, AI explains the trade-off, nothing changes until you click Apply |
 | **Ledger questions** (`backend/src/lib/explorer.ts`) | English → a grid view (filters and a sort). The model never sees a transaction |
 | **Provider layer** (`backend/src/lib/llm/`) | One interface over Gemini, Groq and Claude, with automatic fallback |
@@ -138,10 +140,11 @@ calls; the AI risk check runs only for purchases that would be paid automaticall
 
 | Tool | How it's used |
 |---|---|
-| **AG Grid** | The Spending Explorer (`frontend/app/explorer/`): the full ledger with sorting, column filters, pagination and CSV export, themed from the app's own design tokens in light and dark. An AI question box drives the grid's external filter and sort, and a PayPal column fills in live from reconciliation |
+| **AG Grid** | The Spending Explorer (`frontend/app/explorer/`): the full ledger with sorting, column filters, pagination and CSV export, themed from the app's own design tokens in light and dark. An AI question box drives the grid's external filter and sort, and a PayPal column fills in live from reconciliation. **AG Charts** draws a 14-day paid / waiting / stopped chart above it that follows whatever the grid is showing, so an English question redraws both |
 | **Channel3** | Live product search across real retailers. The price is fetched again at purchase time, and if it can't be verified, nothing is bought |
 | **Render** | One-click Blueprint deploy (`render.yaml`): two services and PostgreSQL |
-| **Postman / APIMatic** | [`docs/openapi.yaml`](docs/openapi.yaml) describes the agent and merchant APIs. Import it into Postman to explore them, or into APIMatic to generate client SDKs |
+| **Zapier** | Approval alerts above send a JSON POST that a Zapier Catch Hook accepts. Tested against a local receiver, **not** against a live Zapier account |
+| **Postman / APIMatic** | [`docs/openapi.yaml`](docs/openapi.yaml) describes the agent and merchant APIs and passes the Redocly linter. [`docs/postman/`](docs/postman/) holds a Postman collection and environment generated from it, which `newman` runs green against the backend (9 requests, 19 assertions). The spec scored 99/100 in APIMatic's audit, and APIMatic's portal project built from it is in [`src/`](src). We also used the **APIMatic Context Plugin** in Claude Code to check our PayPal calls against the PayPal Server SDK docs: it surfaced a real refund bug, now fixed. Every question and result is logged in [`docs/APIMATIC.md`](docs/APIMATIC.md). See [`docs/API.md`](docs/API.md) |
 
 ## Run it locally (about 10 minutes)
 

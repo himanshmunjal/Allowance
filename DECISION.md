@@ -851,3 +851,47 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
 * **Why collapse suggestions?** They are useful but occasional, and the ledger is what people watch.
 * **Status.** Accepted. Measured at 5 window sizes in both themes: Purchases 512px at each, no sideways scroll, every sampled colour at least 4.5:1.
 
+
+## D-072 · A refused saved PayPal asks the owner, instead of failing  ·  *builds on D-062*
+
+* **Context.** Auto-pay used one saved PayPal (Vault token). If PayPal refused it (token revoked or expired, funding declined), the purchase ended `FAILED`.
+  The hosted demo shares one token across every visitor, so one dead token would have broken auto-pay for everyone.
+* **Decision.** A *definite* refusal of the saved PayPal moves the purchase to `PENDING_APPROVAL` with the reason first, a "Saved PayPal" step on its timeline,
+  and an `AUTOPAY_FALLBACK` audit entry. Covered: a declined charge, and PayPal saying the token is gone (404, `INVALID_RESOURCE_ID`, vault errors).
+  When the token itself is gone, the wallet is also set to disconnected, so the next purchase asks straight away.
+* **What is not covered, on purpose.** Timeouts, network errors and 5xx stay `PROCESSING` (the money may have moved, D-062). A 401, or a 400 about our own request,
+  stays `FAILED`: asking a person would not fix it.
+* **Why safe.** Nothing is charged on a definite 4xx at order creation, or on a declined capture. The approval page makes a new order with its own request id.
+* **Status.** Accepted. Tests: decline, revoked token (wallet turns off, next purchase asks, no PayPal call), and an unrelated 400 still failing.
+
+## D-073 · AG Charts beside the AG Grid ledger, and a Postman collection
+
+* **Decision.** The Explorer gets a 14-day stacked column chart (paid, waiting, stopped) on AG Charts Community. It plots the grid's *visible* rows, so a question or filter redraws
+  both. Chart colours are read from the app's tokens and refreshed when the theme flips, because a canvas can't read CSS variables.
+* **Postman.** `docs/postman/` is generated from `openapi.yaml`, then given real example bodies, folder-level auth and tests. Running it with `newman` found two real problems:
+  generated requests carried their own unset `{{bearerToken}}`, and the spec had an unquoted comma that cut off two field descriptions. Both fixed.
+* **APIMatic.** The spec was imported and audited: 68 for the first version, 54 for a hand-edited rewrite, and **99** for version 1.3.0, which was rebuilt rule by rule from APIMatic's own findings.
+  APIMatic then set up a portal project in `src/` (the spec, `apimatic.json`, pages, and navigation with SDK and Context Plugin tabs). Not yet verified: that the portal was built and published, that SDKs were downloaded, or that a Context Plugin was installed and used. The docs claim only what is above.
+* **Status.** Accepted.
+
+## D-074 · Checks from the APIMatic Context Plugin  ·  *changes D-072, fixes refunds*
+
+* **Context.** The plugin (docs in `docs/APIMATIC.md`) was asked six questions about the PayPal calls we make.
+* **Decision, auto-pay.** The plugin could not confirm the error codes for a revoked token, so D-072's guessed codes stay as a first filter, and at order creation any 422 now asks the owner (PayPal documents 422 as a business-rule refusal: nothing is charged).
+  **Not at capture:** a 422 there can mean "order already captured", and asking the owner to pay again could charge twice. A test proves that path stays `FAILED`.
+* **Decision, refunds.** PayPal can accept a refund and report it `FAILED` or `CANCELLED`. That no longer marks the purchase `REFUNDED`: it stays `PAID`, an audit entry is written, and the owner is told. Refunds also send `custom_id` (our transaction id).
+* **Left alone on purpose.** `storedCredential` (MERCHANT, SUBSEQUENT) on vaulted orders: not mandatory, auto-pay is live-verified without it, and it can't be retested here.
+* **Not covered by the plugin.** Webhook signature verification and event names.
+* **Status.** Accepted. 84 tests pass.
+
+## D-075 · Approval alerts, Zapier-compatible  ·  *amends D-070*
+
+* **Context.** An approval request was only visible if the owner opened the dashboard, which is the weakest point of "ask a human". D-070 named Zapier alerts as the next useful addition.
+* **Decision.** Each owner can save one webhook address. Allowance posts JSON to it when a person is needed: a purchase waits for approval (including when a refused saved PayPal sends it there, D-072) or a payment fails.
+  Blocked purchases and the Attack Lab stay quiet. The body has a `text` line (Slack shows it) and structured fields (Zapier receives them all).
+* **Why a webhook and not a Zapier SDK.** It needs no account here and works with Zapier, Slack, Make or anything else.
+* **Safety.** The server calls a URL a user typed, so: https only, no credentials in the address, no private or reserved ranges, the address re-checked **at connection time** (so a name that changes its answer can't slip through), no redirects, 5-second timeout,
+  and the saved URL is never returned, only its host (hook URLs carry a secret). A test proves the connect-time check: with it switched off, that test fails.
+* **Not built, on purpose.** Bryntum (decoration, trial licence), Elastic (a 30-product catalog and a ledger don't need it), Kernel (Allowance never drives real checkouts), Astropods (a runtime for hosting agents; Allowance is the trust layer, and Render hosts it).
+* **Not verified.** Delivery to a live Zapier account. It was tested against a local receiver.
+* **Status.** Accepted. 97 tests.

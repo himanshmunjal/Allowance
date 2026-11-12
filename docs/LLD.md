@@ -162,7 +162,8 @@ requestPurchase({ agent, productId, quantity, userIntent, agentReason, source })
   ├─ 8. One PostgreSQL transaction holding a per-user advisory lock:
   │     re-read rules, allowance, spend and recent purchases; apply anything stricter; insert the row
   ├─ 9a. ALLOW → PROCESSING (holds budget) → createVaultedOrder → capture if needed
-  │             → PAID | FAILED (PayPal said no) | stays PROCESSING (answer lost, see below)
+  │             → PAID | PENDING_APPROVAL (saved PayPal refused: nothing charged, D-072)
+  │             | FAILED (any other PayPal error) | stays PROCESSING (answer lost, see below)
   └─ 9b. NEEDS_APPROVAL → PENDING_APPROVAL, approvalUrl = APP_URL/approve/:id
 ```
 

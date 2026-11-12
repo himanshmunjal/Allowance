@@ -49,7 +49,7 @@ export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<
     await client.query("COMMIT");
     return value;
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.query("ROLLBACK").catch(() => { });
     throw err;
   } finally {
     client.release();
@@ -173,6 +173,8 @@ async function migrate(p: pg.Pool) {
     ALTER TABLE transactions ADD COLUMN IF NOT EXISTS category TEXT;
     -- One-click demo accounts, deleted after a day (D-067). Lab accounts are deleted right after a run (D-065).
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false;
+    -- Where approval alerts are posted, if the owner set one up (D-075). A secret: never returned to the browser.
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_webhook_url TEXT;
     CREATE INDEX IF NOT EXISTS idx_tx_status ON transactions(status, created_at);
   `);
 }
@@ -268,6 +270,7 @@ export async function insertTransaction(tx: NewTransaction, on?: Queryable): Pro
 const updatableColumns = {
   status: "status",
   decisionReasons: "decision_reasons",
+  checks: "checks",
   paypalOrderId: "paypal_order_id",
   paypalCaptureId: "paypal_capture_id",
   paypalRefundId: "paypal_refund_id",
@@ -281,7 +284,7 @@ export async function updateTransaction(id: string, patch: TxUpdate): Promise<Tr
   for (const [key, column] of Object.entries(updatableColumns)) {
     const value = patch[key as keyof TxUpdate];
     if (value !== undefined) {
-      params.push(key === "decisionReasons" ? jsonb(value) : value);
+      params.push(key === "decisionReasons" || key === "checks" ? jsonb(value) : value);
       sets.push(`${column} = $${params.length}`);
     }
   }

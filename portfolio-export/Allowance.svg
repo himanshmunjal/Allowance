@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#222">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#222"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="15" markerHeight="15" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3d7a8a"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <text x="40" y="52" font-size="26" font-weight="700">Allowance: architecture</text>
+  <line x1="1110" y1="45" x2="1160" y2="45" stroke="#3d7a8a" stroke-width="3"/>
+  <text x="1172" y="50" font-size="15">purchase path</text>
+  <line x1="1310" y1="45" x2="1360" y2="45" stroke="#222" stroke-width="1.6"/>
+  <text x="1372" y="50" font-size="15">approval and webhooks</text>
+
+  <!-- Groups -->
+  <g fill="none" stroke="#222" stroke-width="1.2" stroke-dasharray="6 5">
+    <rect x="30" y="120" width="210" height="520" rx="10"/>
+    <rect x="330" y="120" width="215" height="520" rx="10"/>
+    <rect x="560" y="120" width="520" height="580" rx="10"/>
+    <rect x="1100" y="480" width="215" height="220" rx="10"/>
+    <rect x="1335" y="120" width="240" height="380" rx="10"/>
+  </g>
+  <g font-size="15" font-weight="700" letter-spacing="1.5">
+    <text x="48" y="150">CLIENT</text>
+    <text x="348" y="150">API</text>
+    <text x="578" y="150">PROCESSING</text>
+    <text x="1118" y="684">STORAGE</text>
+    <text x="1353" y="150">OUTPUT</text>
+  </g>
+
+  <!-- Boxes -->
+  <g fill="#ffffff" stroke="#222" stroke-width="1.8">
+    <rect x="50" y="200" width="170" height="130" rx="8"/>
+    <rect x="50" y="440" width="170" height="130" rx="8"/>
+    <rect x="350" y="200" width="120" height="400" rx="8"/>
+    <rect x="575" y="165" width="485" height="505" rx="10"/>
+    <rect x="600" y="230" width="360" height="75" rx="8"/>
+    <rect x="600" y="340" width="360" height="75" rx="8"/>
+    <rect x="600" y="450" width="360" height="75" rx="8"/>
+    <rect x="600" y="560" width="360" height="75" rx="8"/>
+    <rect x="1125" y="530" width="170" height="120" rx="8"/>
+    <rect x="1360" y="190" width="150" height="110" rx="8"/>
+    <rect x="1360" y="360" width="150" height="110" rx="8"/>
+  </g>
+
+  <!-- Client -->
+  <text x="135" y="250" font-size="18" font-weight="700" text-anchor="middle">Shopping agent</text>
+  <text x="135" y="276" font-size="14" text-anchor="middle">tool-calling loop</text>
+  <text x="135" y="296" font-size="14" text-anchor="middle">Gemini / Groq / Claude</text>
+  <text x="135" y="490" font-size="18" font-weight="700" text-anchor="middle">MCP agent</text>
+  <text x="135" y="516" font-size="14" text-anchor="middle">Claude Desktop,</text>
+  <text x="135" y="536" font-size="14" text-anchor="middle">scripts, any client</text>
+
+  <!-- API -->
+  <text x="410" y="380" font-size="18" font-weight="700" text-anchor="middle">Hono API</text>
+  <text x="410" y="406" font-size="14" text-anchor="middle">routes, auth,</text>
+  <text x="410" y="426" font-size="14" text-anchor="middle">/mcp endpoint</text>
+
+  <!-- Pipeline -->
+  <text x="817" y="205" font-size="19" font-weight="700" text-anchor="middle">Purchase pipeline</text>
+  <text x="780" y="262" font-size="17" font-weight="700" text-anchor="middle">Catalog</text>
+  <text x="780" y="286" font-size="14" text-anchor="middle">server-side price, agent can't set it</text>
+  <text x="780" y="372" font-size="17" font-weight="700" text-anchor="middle">Injection screen</text>
+  <text x="780" y="396" font-size="14" text-anchor="middle">deterministic patterns, Unicode tricks</text>
+  <text x="780" y="482" font-size="17" font-weight="700" text-anchor="middle">Policy engine</text>
+  <text x="780" y="506" font-size="14" text-anchor="middle">budgets, caps, categories, retry + split guard</text>
+  <text x="780" y="592" font-size="17" font-weight="700" text-anchor="middle">AI risk check</text>
+  <text x="780" y="616" font-size="14" text-anchor="middle">cart vs request, can only tighten</text>
+
+  <!-- Storage -->
+  <text x="1210" y="572" font-size="18" font-weight="700" text-anchor="middle">PostgreSQL</text>
+  <text x="1210" y="598" font-size="14" text-anchor="middle">ledger, rules</text>
+  <text x="1210" y="618" font-size="14" text-anchor="middle">per-user lock</text>
+
+  <!-- Output -->
+  <text x="1435" y="240" font-size="18" font-weight="700" text-anchor="middle">PayPal</text>
+  <text x="1435" y="266" font-size="14" text-anchor="middle">Orders v2, Vault</text>
+  <text x="1435" y="405" font-size="18" font-weight="700" text-anchor="middle">Approval</text>
+  <text x="1435" y="427" font-size="18" font-weight="700" text-anchor="middle">page</text>
+  <text x="1435" y="451" font-size="14" text-anchor="middle">Next.js</text>
+
+  <!-- Client -> API -->
+  <line x1="220" y1="267" x2="346" y2="267" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="285" y="257" font-size="14" text-anchor="middle">tool call</text>
+  <line x1="220" y1="505" x2="346" y2="505" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="285" y="495" font-size="14" text-anchor="middle">MCP call</text>
+
+  <!-- API -> pipeline -->
+  <line x1="470" y1="267" x2="596" y2="267" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="508" y="233" font-size="14" text-anchor="middle">id, qty,</text>
+  <text x="508" y="251" font-size="14" text-anchor="middle">reason</text>
+
+  <!-- Step arrows -->
+  <line x1="780" y1="305" x2="780" y2="336" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="794" y="326" font-size="14">priced item</text>
+  <line x1="780" y1="415" x2="780" y2="446" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="794" y="436" font-size="14">clean</text>
+  <line x1="780" y1="525" x2="780" y2="556" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="794" y="546" font-size="14">allowed, would auto-pay</text>
+
+  <!-- Risk -> PostgreSQL -->
+  <line x1="960" y1="597" x2="1121" y2="597" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="1008" y="568" font-size="14" text-anchor="middle">decision,</text>
+  <text x="1008" y="586" font-size="14" text-anchor="middle">insert</text>
+
+  <!-- PostgreSQL -> PayPal / Approval -->
+  <polyline points="1170,530 1170,245 1356,245" fill="none" stroke="#3d7a8a" stroke-width="3" marker-end="url(#aa)"/>
+  <text x="1262" y="217" font-size="14" text-anchor="middle">ALLOW: pay with</text>
+  <text x="1262" y="235" font-size="14" text-anchor="middle">saved wallet</text>
+  <polyline points="1250,530 1250,415 1356,415" fill="none" stroke="#222" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="1292" y="387" font-size="14" text-anchor="middle">NEEDS</text>
+  <text x="1292" y="405" font-size="14" text-anchor="middle">APPROVAL</text>
+
+  <!-- Approval -> PayPal -->
+  <line x1="1435" y1="360" x2="1435" y2="304" stroke="#222" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="1447" y="338" font-size="14">capture</text>
+
+  <!-- Webhooks back to API -->
+  <polyline points="1510,245 1545,245 1545,800 410,800 410,604" fill="none" stroke="#222" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="980" y="790" font-size="15" text-anchor="middle">PayPal webhooks: captures, consent removed, disputes (pause agent)</text>
+</svg>

@@ -10,7 +10,8 @@ import { assessRisk, type RiskAssessment } from "./risk";
 import { getAgent, type AgentContext } from "./agents";
 import type { DecisionCheck, PurchaseResult, Transaction, TxSource } from "../shared/types";
 import { effectiveAutoLimit, evaluateVelocity, recentPurchases } from "./velocity";
-import { getVaultId, setWalletConnected } from "./wallet";
+import { notifyOwner, type AlertEvent } from "./notify";
+import { getVaultId, setWalletConnected, setWalletDisconnected } from "./wallet";
 
 // THE purchase pipeline. Every spend, from the chat agent or from an MCP client, goes through
 // requestPurchase(). Nothing else in the codebase creates a payment for an agent (LLD §5).
@@ -252,6 +253,7 @@ export async function requestPurchase(req: PurchaseRequest, opts: PipelineOption
   }
   if (tx.status === "PENDING_APPROVAL") {
     await audit(userId, "APPROVAL_REQUESTED", `${req.agent.name} is waiting for your approval: ${product.name} (${fmt(amount)})`, tx.id, { risk });
+    alertOwner(tx, "approval_needed");
     return result(tx);
   }
 
@@ -266,9 +268,13 @@ export async function requestPurchase(req: PurchaseRequest, opts: PipelineOption
 class PaymentDeclined extends Error {}
 
 async function autoPay(tx: Transaction, vaultId: string): Promise<Transaction> {
+  // Where a refusal happens matters: before the order exists nothing can have been charged, but a 422 at
+  // capture can mean "already captured", and asking the owner to pay again then would charge twice.
+  let stage: "create" | "capture" = "create";
   try {
     let order = await paypal.createVaultedOrder(orderInput(tx), vaultId);
     if (order.status !== "COMPLETED") {
+      stage = "capture";
       order = await paypal.captureOrder(order.id, `${tx.id}-vault-capture`);
     }
     const capture = paypal.firstCapture(order);
@@ -291,11 +297,70 @@ async function autoPay(tx: Transaction, vaultId: string): Promise<Transaction> {
       await audit(tx.userId, "PAYPAL_UNCONFIRMED", `Couldn't confirm the ${fmt(tx.amount)} payment yet (${message}). Checking again shortly.`, tx.id);
       return tx;
     }
+    // A definite "no" about the saved PayPal itself (revoked, expired, declined): nothing was charged,
+    // and a person can still pay in PayPal. Ask them, instead of failing the purchase.
+    const fallback = savedPayPalProblem(err, stage);
+    if (fallback) return fallBackToApproval(tx, fallback);
     return markFailed(tx, err);
   }
 }
 
-// PayPal keeps a PayPal-Request-Id for hours, so re-sending the same create and capture returns the
+/** Tells the owner, if they set up alerts, that a person is needed. Fire and forget: it never slows or breaks a purchase. */
+function alertOwner(tx: Transaction, event: AlertEvent) {
+  void notifyOwner(tx.userId, event, {
+    id: tx.id,
+    title: tx.title,
+    merchant: tx.merchantName,
+    amount: tx.amount,
+    currency: tx.currency,
+    agent: tx.agentName ?? null,
+    status: tx.status,
+    reasons: tx.decisionReasons,
+  });
+}
+
+type Fallback = { reason: string; walletGone: boolean };
+
+// PayPal says no with a 4xx and an issue code. These mean the saved PayPal can't be used right now.
+const TOKEN_GONE = /RESOURCE_NOT_FOUND|INVALID_RESOURCE_ID|PAYMENT_TOKEN|VAULT|PERMISSION_DENIED|PAYMENT_SOURCE_(INFO_CANNOT_BE_VERIFIED|CANNOT_BE_USED)/i;
+const CANNOT_PAY = /INSTRUMENT_DECLINED|PAYER_ACTION_REQUIRED|PAYER_ACCOUNT|PAYEE_ACCOUNT|TRANSACTION_REFUSED|DECLINED/i;
+
+/** Null when this is some other failure (bad request, our own bug), which stays a real error. */
+function savedPayPalProblem(err: unknown, stage: "create" | "capture"): Fallback | null {
+  if (err instanceof PaymentDeclined) return { reason: "PayPal declined the charge to your saved PayPal", walletGone: false };
+  if (!(err instanceof paypal.PayPalError) || err.status >= 500 || err.status === 401) return null;
+  const text = `${err.name} ${err.message}`;
+  if (err.status === 404 || TOKEN_GONE.test(text)) return { reason: "Your saved PayPal can no longer be charged (it may have been removed in PayPal)", walletGone: true };
+  if (CANNOT_PAY.test(text)) return { reason: "PayPal declined the charge to your saved PayPal", walletGone: false };
+  // PayPal documents 422 on create-order as "failed business validation": the order was refused, so nothing
+  // was charged, whatever the issue code is called. Unknown codes land here too. Not at capture (see autoPay).
+  if (stage === "create" && err.status === 422) return { reason: `PayPal would not take this payment from your saved PayPal (${err.message})`, walletGone: false };
+  return null;
+}
+
+async function fallBackToApproval(tx: Transaction, fb: Fallback): Promise<Transaction> {
+  console.warn(`[purchase] ${tx.id} auto-pay refused, asking the owner instead: ${fb.reason}`);
+  if (fb.walletGone) await setWalletDisconnected(tx.userId);
+  const held = await updateTransaction(tx.id, {
+    status: "PENDING_APPROVAL",
+    decisionReasons: [`${fb.reason}, so this needs your approval. Nothing was charged.`, ...tx.decisionReasons],
+    checks: [
+      ...tx.checks,
+      {
+        step: "wallet",
+        label: "Saved PayPal",
+        outcome: "ask",
+        detail: fb.walletGone ? "PayPal refused the saved wallet. Auto-pay is off until you reconnect; you approve this one in PayPal" : "PayPal declined the saved wallet. You approve this one in PayPal",
+      },
+    ],
+  });
+  await audit(tx.userId, "AUTOPAY_FALLBACK", `${fb.reason}. ${tx.title} (${fmt(tx.amount)}) now waits for your approval${fb.walletGone ? ", and auto-pay was turned off" : ""}.`, tx.id);
+  alertOwner(held, "approval_needed");
+  return held;
+}
+
+// PayPal keeps a PayPal-Request-Id for 6 hours on order calls (per the PayPal Server SDK docs, via the
+// APIMatic Context Plugin, docs/APIMATIC.md), so re-sending the same create and capture returns the
 // original order rather than charging again. Stop well inside that window: past it a retry could
 // charge twice, so an older payment is left for a person to look at.
 const RECOVER_AFTER = "2 minutes";
@@ -410,6 +475,12 @@ export async function refundPurchase(userId: string, txId: string): Promise<Tran
   const tx = await requireStatus(userId, txId, "PAID");
   if (!tx.paypalCaptureId) throw new PurchaseInputError("This payment has no PayPal capture to refund.");
   const refund = await paypal.refundCapture(tx.paypalCaptureId, tx.amount, tx.currency, tx.id);
+  // PayPal can accept the request and still report the refund FAILED or CANCELLED (COMPLETED and PENDING are the others).
+  // The money did not go back, so the purchase stays PAID.
+  if (refund.status === "FAILED" || refund.status === "CANCELLED") {
+    await audit(userId, "PAYPAL_REFUND_FAILED", `PayPal did not complete the ${fmt(tx.amount)} refund from ${tx.merchantName} (${refund.status})`, tx.id, { refundId: refund.id, status: refund.status });
+    throw new PurchaseInputError(`PayPal could not complete this refund (${refund.status.toLowerCase()}). Nothing was refunded, so the purchase is still paid.`);
+  }
   const refunded = await updateTransaction(tx.id, { status: "REFUNDED", paypalRefundId: refund.id });
   await audit(userId, "PAYPAL_REFUNDED", `Refunded ${fmt(tx.amount)} from ${tx.merchantName} (refund ${refund.status})`, tx.id, {
     refundId: refund.id,
@@ -442,6 +513,7 @@ async function markFailed(tx: Transaction, err: unknown): Promise<Transaction> {
     decisionReasons: [...tx.decisionReasons, `PayPal error: ${message}`],
   });
   await audit(tx.userId, "PAYPAL_ERROR", `Payment failed: ${message}`, tx.id, { debugId });
+  alertOwner(failed, "payment_failed");
   return failed;
 }
 

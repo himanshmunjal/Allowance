@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { LedgerView, ReconcileRow, Transaction } from "@shared/types";
 import DecisionTimeline from "@/app/components/DecisionTimeline";
 import { api, money, statusMeta } from "@/app/components/format";
+import SpendChart from "./SpendChart";
 
 // The Spending Explorer (D-066), on AG Grid: the whole ledger, a question box whose answer is a view
 // of the grid, and a check of every payment against PayPal's own record.
@@ -228,6 +229,8 @@ export default function ExplorerView() {
         <Tile label="Waiting on you" value={money(totals.waiting)} />
         <Tile label="Stopped before paying" value={money(totals.stopped)} note={`${totals.stoppedCount} purchase${totals.stoppedCount === 1 ? "" : "s"}`} />
       </dl>
+
+      {rows !== null && <SpendChart rows={visibleRows} />}
 
       <div className="mt-3 h-[34rem]">
         <AgGridReact<Transaction>

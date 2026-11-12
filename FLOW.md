@@ -403,6 +403,20 @@ merchant-initiated vaulted payments (auto-pay), refunds, plus the MCP path.
 
 **Tested so far:** with a fake PayPal and no AI key. **Not yet run:** real PayPal or AI keys, English questions in the Explorer, the Render deploy, `docker-compose.yml`, the GitHub CI workflow.
 
+## Phase 24 · Redesign, auto-pay fallback, AG Charts, Postman
+
+| Step | What | Result |
+|---|---|---|
+| 24.1 | Warm paper-and-ink redesign, serif headline, ring logo, new favicon, light/dark toggle with no flash | ✅ landing and login checked in both themes |
+| 24.2 | Auto-pay fallback to approval when the saved PayPal is refused (**D-072**) | ✅ 79 of 79 tests, including 3 new |
+| 24.3 | AG Charts view on the Explorer, following the grid's visible rows (**D-073**) | ✅ headless Chrome, light + dark, on a separate copy and database |
+| 24.4 | Lint `openapi.yaml`; fix the unquoted comma; generate and fix a Postman collection | ✅ `newman`: 9 requests, 19 assertions, 0 failed |
+| 24.5 | `docs/API.md` | ✅ |
+| 24.6 | Placeholders (`TODO_`) | ⏳ need the hosted URL, video URL and sandbox buyer |
+| 24.7 | APIMatic spec: 68 → 54 → 99/100 (rebuilt from APIMatic's own rules); portal project in `src/` | ✅ |
+| 24.8 | APIMatic Context Plugin installed; six questions asked about our PayPal calls; one refund bug fixed, one safety rule added (**D-074**) | ✅ 84 tests, mutation-checked; log in `docs/APIMATIC.md` |
+| 24.9 | Approval alerts (webhook, Zapier-compatible) with SSRF protection; settings card on the dashboard (**D-075**) | ✅ 97 tests; end to end against a local receiver; card checked in light and dark |
+
 ## Next steps (to do with real keys)
 1. Fill `backend/.env` and `frontend/.env.local` (see README) → `npm run check-ai` → `npm run dev`.
 2. Live end-to-end test: connect the sandbox wallet (Vault) → auto-pay → approval → refund → Verify with PayPal → a question in the Explorer → `npm run redteam`.

@@ -8,6 +8,11 @@ const backendUrl = (process.env.BACKEND_URL ?? "http://localhost:4000").replace(
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
+  experimental: {
+    // The /api rewrite proxy drops the socket after 30s by default (ECONNRESET "socket hang up").
+    // AI routes like /api/policy/parse can take longer: provider timeout + retry + fallback chain.
+    proxyTimeout: 180_000,
+  },
   turbopack: {
     rules: {
       "*.css": {
