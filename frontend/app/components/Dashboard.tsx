@@ -87,7 +87,7 @@ function DemoBanner() {
           Ask the agent for coffee beans: {info.autoPay ? "it pays with a saved sandbox PayPal, no popup." : "you approve it in PayPal, and can save the wallet for auto-pay."}
         </li>
         <li>
-          Open the pending earbuds under Purchases and pay with the PayPal button. The test buyer login is in the{" "}
+          Ask for wireless earbuds: they need your approval, so open them under Purchases and pay with the PayPal button. The test buyer login is in the{" "}
           <a className={link} href="https://github.com/himanshmunjal/Allowance#try-it-as-a-judge" target="_blank" rel="noreferrer">README</a>.
         </li>
         <li>

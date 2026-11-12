@@ -895,3 +895,11 @@ Format: **D-xxx · Title** → Context · Decision · Why · Alternatives consid
 * **Not built, on purpose.** Bryntum (decoration, trial licence), Elastic (a 30-product catalog and a ledger don't need it), Kernel (Allowance never drives real checkouts), Astropods (a runtime for hosting agents; Allowance is the trust layer, and Render hosts it).
 * **Not verified.** Delivery to a live Zapier account. It was tested against a local receiver.
 * **Status.** Accepted. 97 tests.
+
+## D-076 · Demo accounts start fresh  ·  *changes D-067*
+
+* **Context.** Every new demo account came pre-filled with 20 sample purchases and three live ones (a pending $79 earbuds
+  purchase among them). Opening the demo in a new browser looked like someone else's history, not a fresh start.
+* **Decision.** A demo account still gets the default rules, the built-in chat agent, two example agents and a child login, but
+  no purchases. The visitor creates every row themselves. The rule advisor has no suggestions until there are decisions to learn from.
+* **Status.** Accepted.

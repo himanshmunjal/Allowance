@@ -284,19 +284,18 @@ describe("payments when the network misbehaves", () => {
   });
 
   describe("one-click demo", () => {
-    it("creates a populated account, with history outside the budget window", async () => {
+    it("creates a fresh account: agents and a kid, but no purchase history", async () => {
       const res = await app.request("/api/demo/start", { method: "POST", headers: { "x-forwarded-for": "10.0.0.1" } });
       assert.equal(res.status, 201);
       const cookie = res.headers.get("set-cookie")!.split(";")[0];
-      const ledger = (await (await app.request("/api/transactions", { headers: { Cookie: cookie } })).json()) as { transactions: { source: string; status: string }[]; spend: { spent: number; pending: number }; agents: unknown[] };
-      assert.equal(ledger.spend.spent, 0, "sample history doesn't use up the budget");
-      assert.equal(ledger.spend.pending, 79);
+      const ledger = (await (await app.request("/api/transactions", { headers: { Cookie: cookie } })).json()) as { transactions: unknown[]; spend: { spent: number; pending: number }; agents: unknown[] };
+      assert.equal(ledger.transactions.length, 0);
+      assert.equal(ledger.spend.spent, 0);
+      assert.equal(ledger.spend.pending, 0);
       assert.equal(ledger.agents.length, 4);
-      assert.ok(ledger.transactions.some((t) => t.status === "PENDING_APPROVAL" && t.source === "chat"));
-      assert.ok(ledger.transactions.some((t) => t.source === "sample"));
 
-      const advice = (await (await app.request("/api/policy/suggestions", { headers: { Cookie: cookie } })).json()) as { suggestions: { id: string }[] };
-      assert.deepEqual(advice.suggestions.map((s) => s.id).sort(), ["loosen-category:electronics", "tighten:gifts"]);
+      const advice = (await (await app.request("/api/policy/suggestions", { headers: { Cookie: cookie } })).json()) as { suggestions: unknown[] };
+      assert.deepEqual(advice.suggestions, []);
     });
 
     it("has no password anyone can log in with", async () => {

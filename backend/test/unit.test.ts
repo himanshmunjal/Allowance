@@ -7,6 +7,7 @@ import { checkChildSafety } from "../src/lib/child-safety";
 import { compareToPayPal } from "../src/lib/explorer";
 import { detectInjection } from "../src/lib/injection";
 import { checkWebhookUrl, isBlockedAddress, postJson } from "../src/lib/notify";
+import { describeChanges } from "../src/lib/rules-parser";
 import { DEFAULT_POLICY, evaluatePolicy, sanitizePolicy, stricter } from "../src/lib/policy";
 import { evaluateVelocity, type RecentPurchase } from "../src/lib/velocity";
 import type { Policy, SpendSummary } from "../src/shared/types";
@@ -239,5 +240,25 @@ describe("approval alert addresses (SSRF)", () => {
       if (before === undefined) delete process.env.NOTIFY_ALLOW_PRIVATE;
       else process.env.NOTIFY_ALLOW_PRIVATE = before;
     }
+  });
+});
+
+describe("describeChanges (rules confirmation)", () => {
+  it("lists only what actually changed", () => {
+    const after: Policy = {
+      ...DEFAULT_POLICY,
+      weeklyBudget: 80,
+      blockedCategories: [...DEFAULT_POLICY.blockedCategories, "electronics"],
+      categoryAskAbove: [{ category: "clothing", amount: 40 }],
+    };
+    const changes = describeChanges(DEFAULT_POLICY, after);
+    assert.ok(changes.includes("weekly budget $80"));
+    assert.ok(changes.includes("blocked electronics"));
+    assert.ok(changes.includes("ask for clothing over $40"));
+    assert.ok(!changes.some((c) => c.includes("auto-pay")));
+  });
+
+  it("is empty when nothing changed", () => {
+    assert.deepEqual(describeChanges(DEFAULT_POLICY, { ...DEFAULT_POLICY }), []);
   });
 });
